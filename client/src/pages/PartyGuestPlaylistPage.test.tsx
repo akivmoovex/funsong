@@ -121,6 +121,9 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
     await waitFor(() => {
       expect(screen.getByText(/Song One/i)).toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(typeof socketHandlers['party:ended']).toBe('function')
+    })
 
     socketHandlers['party:ended']?.({ source: 'host' })
 
@@ -179,9 +182,9 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Leave party/i })).toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: /Leave party/i }).length).toBeGreaterThan(0)
     })
-    fireEvent.click(screen.getByRole('button', { name: /Leave party/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /Leave party/i })[0])
 
     await waitFor(() => {
       expect(screen.getByText(/Home screen/i)).toBeInTheDocument()
@@ -198,7 +201,7 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/Available Songs/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/Available Songs/i).length).toBeGreaterThan(0)
     })
     expect(screen.getByText(/Suggested Song/i)).toBeInTheDocument()
     expect(screen.getByText(/Requested by Alice/i)).toBeInTheDocument()

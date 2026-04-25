@@ -869,7 +869,7 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-left sm:p-5">
-        <h3 className="text-lg font-black text-cyan-100">Suggested Songs</h3>
+        <h3 className="text-lg font-black text-cyan-100">Guest Song Requests</h3>
         {songReqs && songReqs.length === 0 && (
           <p className="mt-1 text-sm text-white/60">No pending song requests.</p>
         )}
@@ -1061,7 +1061,7 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div>
-        <h3 className="text-lg font-black text-amber-100">Host Picks</h3>
+        <h3 className="text-lg font-black text-amber-100">Recommended Songs</h3>
         <p className="text-xs text-white/60">
           Picks from your approved library only (no web scraping). Uses tags, default picks, and your party
           request text when it helps. Complete MP3 + lyrics required.

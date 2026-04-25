@@ -26,6 +26,14 @@ export async function getAppliedMigrationsSet(pool) {
   }
 }
 
+/**
+ * @param {Set<string>} applied
+ * @param {string[]} required
+ */
+export function getMissingRequiredMigrations(applied, required) {
+  return required.filter((name) => !applied.has(name))
+}
+
 async function applyOneMigrationInTransaction(pool, name, sql) {
   const client = await pool.connect()
   try {

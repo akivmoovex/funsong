@@ -15,9 +15,10 @@ Use this after each deploy or when validating a new environment. It complements 
 | 3 | **Environment** | Copy from [.env.example](../.env.example): create `.env` in the app root *or* set the same keys in the Hostinger Node **environment** panel. Never commit real `.env`. |
 | 4 | **If you split #2, build the frontend** | `npm run build` → outputs to `client/dist/`. If the build is skipped, the SPA and static assets **404** in production. |
 | 5 | **Migrations** | `npm run db:migrate` (alias for `node server/scripts/migrate.mjs`) — needs `DATABASE_URL` set. **Empty Supabase = no users table** until this succeeds. See [PRODUCTION_DB_SETUP.md](PRODUCTION_DB_SETUP.md) for order and table verification. |
-| 6 | **Super admin (once per env or after DB reset)** | Set `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME` in env (see [.env.example](../.env.example)), then `npm run db:seed` (alias for `node server/scripts/seedSuperAdmin.mjs`). If seed says **users table not found**, run **step 5** first. |
-| 7 | **Start / restart the Node app** | `npm start` which runs: `NODE_ENV=production node server/src/index.mjs`. Restart the process after env or code changes (use Hostinger’s Node manager or your process manager). |
-| 8 | **Process manager** | Ensure the app is bound to the public port the reverse proxy uses (default app `PORT` is **3000**; proxy must forward HTTPS → Node). Set `TRUST_PROXY=1` if the proxy terminates TLS. |
+| 6 | **Migration verification** | `npm run db:check` (alias for `node server/scripts/checkMigrations.mjs`). Fails fast if required migrations are missing (for example: `021_party_playlist_requested_by_guest.sql`). |
+| 7 | **Super admin (once per env or after DB reset)** | Set `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME` in env (see [.env.example](../.env.example)), then `npm run db:seed` (alias for `node server/scripts/seedSuperAdmin.mjs`). If seed says **users table not found**, run **step 5** first. |
+| 8 | **Start / restart the Node app** | `npm start` which runs: `NODE_ENV=production node server/src/index.mjs`. Restart the process after env or code changes (use Hostinger’s Node manager or your process manager). |
+| 9 | **Process manager** | Ensure the app is bound to the public port the reverse proxy uses (default app `PORT` is **3000**; proxy must forward HTTPS → Node). Set `TRUST_PROXY=1` if the proxy terminates TLS. |
 
 **Exact production start (from [package.json](../package.json)):** `npm start` → `NODE_ENV=production` + `node server/src/index.mjs`.
 
@@ -37,6 +38,7 @@ Check these before relying on the site in production. Copy this table; tick in y
 | `SUPER_ADMIN_*` | For `db:seed` only | Not read for normal app behavior after seed. |
 | `PARTY_SOCKET_CORS` / `CORS` | If cross-origin | Same-site Hostinger + Node on one hostname often needs nothing extra. |
 | `FORCE_INSECURE_COOKIE` | **Avoid in production** | Only for broken HTTP-only tests; not for real HTTPS. |
+| `REALTIME_DEBUG` | Optional | Set `REALTIME_DEBUG=true` temporarily for structured socket transition logs (`playlist:updated`, `guests:updated`, `party:ended`, `party:expired`, control/song request transitions). Keep unset in normal production use. |
 
 **Optional:** `MAX_AUDIO_UPLOAD_MB`, `RATE_LIMIT_*` — see root [README](../README.md) and `.env.example`.
 
@@ -70,6 +72,18 @@ curl -sS "https://YOUR-DOMAIN/health/db"
 4. **Expected:** Session established; you can reach **admin** / super-admin areas (e.g. **Song library**, **Review party requests** per your build).
 
 **Failure:** 401, redirect loop, or `FATAL` on server — check `SESSION_SECRET`, `DATABASE_URL`, and **HTTPS** + `TRUST_PROXY` + secure cookies (see [§9](#9-common-hostinger-issues--fixes)).
+
+---
+
+## 3b. Temporary realtime debug logging
+
+When investigating live sync issues, you can temporarily enable structured realtime logs:
+
+```bash
+REALTIME_DEBUG=true npm start
+```
+
+This logs event transitions such as `playlist:updated`, `guests:updated`, `party:ended`, `party:expired`, `control:requested`, `control:approved`, `song:requested`, and `song:approved` with session/request short IDs and counts only (no tokens/secrets). Disable after diagnostics to reduce log noise.
 
 ---
 

@@ -116,6 +116,8 @@ Legend:
 
 Run DB migrations before this pass (includes `021_party_playlist_requested_by_guest.sql` for guest-requested queue labels).
 
+Automation note: this repository currently ships an integration fallback (`npm run test:e2e`) using Vitest + supertest (`server/livePartyReleaseHardening.e2e.test.mjs`). Full browser E2E (Playwright/Cypress with multiple real browser contexts and websocket timing) is deferred to keep release hardening non-invasive.
+
 | # | Scenario | Expected Result | Pass/Fail | Notes |
 |---|----------|-----------------|-----------|-------|
 | 86 | Homepage join code form | “Join Party” section with code field and submit appears on `/` |  |  |

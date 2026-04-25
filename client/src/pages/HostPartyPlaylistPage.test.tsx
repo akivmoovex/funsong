@@ -120,7 +120,7 @@ describe('HostPartyPlaylistPage start flow', () => {
     })
   })
 
-  it('shows suggested songs with guest name and queue requested-by label', async () => {
+  it('shows guest song requests with guest name and queue requested-by label', async () => {
     globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/host/parties/') && url.endsWith('/playlist')) {
@@ -198,7 +198,7 @@ describe('HostPartyPlaylistPage start flow', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getAllByRole('heading', { name: /Suggested Songs/i }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('heading', { name: /Guest Song Requests/i }).length).toBeGreaterThan(0)
     })
     expect(screen.getAllByText(/Requested by Alice/i).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: /Approve/i }).length).toBeGreaterThan(0)

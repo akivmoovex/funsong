@@ -27,6 +27,7 @@ import {
 import { buildPartyKaraokeState } from '../services/partyKaraokeState.mjs'
 import { getIntSetting } from '../services/appSettingsService.mjs'
 import { ensurePartyNotExpired } from '../services/partyExpiryService.mjs'
+import { logRealtimeEvent } from '../services/realtimeDebug.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -445,6 +446,10 @@ export function createHostPartyPlaylistRouter(d) {
       }
       const io = getSocketIo(req)
       const playlist = await plRepo.listPlaylistWithSongsForSession(String(session.id), pool)
+      logRealtimeEvent('song:approved', {
+        sessionId: String(session.id),
+        requestId
+      })
       emitPartyPlaylistUpdated(io, String(session.id), {
         source: 'song_request:approved',
         playlist

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  getMissingRequiredMigrations,
   getAppliedMigrationsSet,
   listMigrationFileNames,
   runMigrationsFromDir
@@ -29,6 +30,23 @@ describe('getAppliedMigrationsSet', () => {
     }
     const s = await getAppliedMigrationsSet(pool)
     expect([...s].sort()).toEqual(['001_a.sql', '002_b.sql'])
+  })
+})
+
+describe('getMissingRequiredMigrations', () => {
+  it('returns missing required migration names', () => {
+    const applied = new Set(['001_create_schema_migrations.sql', '020_password_reset_requests.sql'])
+    const missing = getMissingRequiredMigrations(applied, [
+      '020_password_reset_requests.sql',
+      '021_party_playlist_requested_by_guest.sql'
+    ])
+    expect(missing).toEqual(['021_party_playlist_requested_by_guest.sql'])
+  })
+
+  it('returns empty array when all required migrations are applied', () => {
+    const applied = new Set(['021_party_playlist_requested_by_guest.sql'])
+    const missing = getMissingRequiredMigrations(applied, ['021_party_playlist_requested_by_guest.sql'])
+    expect(missing).toEqual([])
   })
 })
 
