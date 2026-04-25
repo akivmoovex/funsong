@@ -11,6 +11,9 @@ const UUID_RE =
 type PlItem = {
   playlistItemId: string
   position: number
+  itemStatus?: string
+  requestedByGuestId?: string | null
+  requestedByGuestDisplayName?: string | null
   id: string
   title: string
   difficulty: string | null
@@ -37,6 +40,7 @@ type ControlReq = {
   partyGuestId: string
   guestDisplayName: string
   songId: string | null
+  playlistItemId?: string | null
   songTitle?: string | null
   createdAt: string
 }
@@ -60,6 +64,7 @@ type KLine = {
 
 type HostPartyKState = {
   currentLine?: KLine | null
+  lyricLines?: KLine[]
   lyricContext?: { previousLine: KLine | null; nextLine: KLine | null }
   activeSong?: { id: string; title?: string; audioFileUrl?: string | null } | null
   playbackStatus?: string
@@ -318,6 +323,7 @@ export function HostPartyPlaylistPage() {
     const onPartyState = (s: HostPartyKState) => {
       setKaraoke({
         currentLine: s.currentLine ?? null,
+        lyricLines: Array.isArray(s.lyricLines) ? s.lyricLines : [],
         lyricContext: s.lyricContext,
         activeSong: s.activeSong,
         playbackStatus: s.playbackStatus,
@@ -348,19 +354,28 @@ export function HostPartyPlaylistPage() {
           : prev?.connectedGuests
       }))
     }
+    const onPlaylistUpdated = (payload: { playlist?: PlItem[] }) => {
+      if (Array.isArray(payload?.playlist)) {
+        setPlaylist(payload.playlist)
+        return
+      }
+      void load()
+    }
     socket.on('control:requested', onReq)
     socket.on('party:state', onPartyState)
     socket.on('party:ended', onPartyEnded)
     socket.on('guests:updated', onGuestsUpdated)
+    socket.on('playlist:updated', onPlaylistUpdated)
     return () => {
       hostSocketRef.current = null
       socket.off('control:requested', onReq)
       socket.off('party:state', onPartyState)
       socket.off('party:ended', onPartyEnded)
       socket.off('guests:updated', onGuestsUpdated)
+      socket.off('playlist:updated', onPlaylistUpdated)
       socket.close()
     }
-  }, [partySessionId, loadControl, loadSongRequests, partyId, nav])
+  }, [partySessionId, loadControl, loadSongRequests, partyId, nav, load])
 
   async function addSong(songId: string) {
     if (!partyId) return
@@ -592,10 +607,17 @@ export function HostPartyPlaylistPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       })
-      const d = (await r.json().catch(() => ({}))) as { error?: string }
+      const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
       if (!r.ok) {
         setErr(d.error || 'start_party')
         return
+      }
+      if (d.state) {
+        setKaraoke((prev) => ({
+          ...(prev || {}),
+          ...d.state,
+          lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
+        }))
       }
       void load()
     } catch {
@@ -605,11 +627,50 @@ export function HostPartyPlaylistPage() {
     }
   }
 
+  async function startSong(playlistItemId: string) {
+    if (!partyId) return
+    setBusy('startsong')
+    setErr(null)
+    try {
+      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-song`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlistItemId })
+      })
+      const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
+      if (!r.ok) {
+        setErr(d.error || 'start_song')
+        return
+      }
+      if (d.state) {
+        setKaraoke((prev) => ({
+          ...(prev || {}),
+          ...d.state,
+          lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
+        }))
+      }
+      void load()
+    } catch {
+      setErr('network')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const firstStartableSong = playlist?.find((p) => String(p.itemStatus || 'pending') === 'pending') || null
+  const canShowStartFirstSong =
+    (karaoke?.sessionStatus || 'approved') === 'active' &&
+    !karaoke?.activeSong?.id &&
+    !!firstStartableSong
+
   function move(idx: number, dir: -1 | 1) {
     if (!playlist || !partyId) return
+    if (String(playlist[idx]?.itemStatus || 'pending') !== 'pending') return
     const next = playlist.slice()
     const j = idx + dir
     if (j < 0 || j >= next.length) return
+    if (String(next[j]?.itemStatus || 'pending') !== 'pending') return
     const t = next[idx]
     next[idx] = next[j]
     next[j] = t
@@ -702,6 +763,7 @@ export function HostPartyPlaylistPage() {
           {err === 'take_control' && 'Could not take back control.'}
           {err === 'ca_toggle' && 'Could not update guest audio mode.'}
           {err === 'start_party' && 'Could not start party.'}
+          {err === 'start_song' && 'Could not start song.'}
           {err === 'end_party' && 'Could not end the party. Try again.'}
           {err === 'party_already_ended' && 'This party was already ended.'}
           {err === 'network' && 'Network error.'}
@@ -735,6 +797,21 @@ export function HostPartyPlaylistPage() {
             </button>
           </div>
         )}
+        {canShowStartFirstSong && (
+          <div className="mb-3 rounded-2xl border border-fuchsia-300/40 bg-fuchsia-500/10 p-3">
+            <p className="text-sm text-fuchsia-100">
+              Stage is open. Start the first queued song to display lyrics to everyone.
+            </p>
+            <button
+              type="button"
+              className="mt-2 min-h-10 rounded-2xl bg-fuchsia-500 px-4 py-2 text-sm font-extrabold text-white disabled:opacity-60"
+              disabled={!!busy || !firstStartableSong}
+              onClick={() => firstStartableSong && void startSong(firstStartableSong.playlistItemId)}
+            >
+              Start first song
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-lg font-black text-amber-100">Controller requests</h3>
           {karaoke?.controller && (
@@ -763,6 +840,10 @@ export function HostPartyPlaylistPage() {
                   <div className="text-xs text-white/60">
                     Song: {cr.songTitle || cr.songId || 'Active song'}
                   </div>
+                  <div className="text-[11px] text-white/45">
+                    {cr.playlistItemId ? `Queue item ${cr.playlistItemId.slice(0, 8)} • ` : ''}
+                    {new Date(cr.createdAt).toLocaleTimeString()}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <button
@@ -788,7 +869,7 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-left sm:p-5">
-        <h3 className="text-lg font-black text-cyan-100">Song requests</h3>
+        <h3 className="text-lg font-black text-cyan-100">Suggested Songs</h3>
         {songReqs && songReqs.length === 0 && (
           <p className="mt-1 text-sm text-white/60">No pending song requests.</p>
         )}
@@ -802,6 +883,7 @@ export function HostPartyPlaylistPage() {
                 <div>
                   <div className="font-bold text-white">{sr.songTitle}</div>
                   <div className="text-xs text-white/70">Requested by {sr.guestDisplayName}</div>
+                  <div className="text-[11px] text-white/45">{new Date(sr.createdAt).toLocaleTimeString()}</div>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <button
@@ -858,6 +940,9 @@ export function HostPartyPlaylistPage() {
           <p className="mt-1 min-h-[2.5rem] text-2xl font-bold leading-tight text-white">
             {pickLineText(karaoke.currentLine ?? null, 'english') || '—'}
           </p>
+          {Array.isArray(karaoke.lyricLines) && karaoke.lyricLines.length === 0 && (
+            <p className="mt-2 text-sm font-bold text-amber-100">No lyrics available for this song.</p>
+          )}
           {karaoke.lyricContext?.nextLine ? (
             <p className="mt-2 text-sm text-white/55">Next: {pickLineText(karaoke.lyricContext.nextLine, 'english')}</p>
           ) : null}
@@ -939,10 +1024,15 @@ export function HostPartyPlaylistPage() {
                   onToggleFavorite={() => void toggleFavorite(p.id)}
                 >
                   <div className="mt-2 flex flex-wrap gap-1">
+                    {p.requestedByGuestDisplayName ? (
+                      <span className="rounded-lg border border-cyan-200/25 bg-cyan-500/20 px-2 py-1 text-xs font-bold text-cyan-100">
+                        Requested by {p.requestedByGuestDisplayName}
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       className="rounded-lg border border-white/20 px-2 py-1 text-xs"
-                      disabled={!!busy}
+                      disabled={!!busy || String(p.itemStatus || 'pending') !== 'pending'}
                       onClick={() => move(idx, -1)}
                     >
                       Up
@@ -950,7 +1040,7 @@ export function HostPartyPlaylistPage() {
                     <button
                       type="button"
                       className="rounded-lg border border-white/20 px-2 py-1 text-xs"
-                      disabled={!!busy}
+                      disabled={!!busy || String(p.itemStatus || 'pending') !== 'pending'}
                       onClick={() => move(idx, 1)}
                     >
                       Down
@@ -971,7 +1061,7 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div>
-        <h3 className="text-lg font-black text-amber-100">Suggested Songs</h3>
+        <h3 className="text-lg font-black text-amber-100">Host Picks</h3>
         <p className="text-xs text-white/60">
           Picks from your approved library only (no web scraping). Uses tags, default picks, and your party
           request text when it helps. Complete MP3 + lyrics required.

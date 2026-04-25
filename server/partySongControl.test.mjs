@@ -21,6 +21,7 @@ vi.mock('./src/services/partyKaraokeState.mjs', () => ({
 import { listLinesForSong } from './src/db/repos/lyricLinesRepo.mjs'
 import * as plRepo from './src/db/repos/partyPlaylistItemsRepo.mjs'
 import { isSongAllowedOnPartyPlaylist } from './src/db/repos/songsRepo.mjs'
+import { buildPartyKaraokeState } from './src/services/partyKaraokeState.mjs'
 import { setPartySongPlaybackOp, startPartySong } from './src/services/partySongControl.mjs'
 
 const sid = '11111111-1111-4111-8111-111111111111'
@@ -32,6 +33,49 @@ beforeEach(() => {
 })
 
 describe('startPartySong', () => {
+  it('activates selected queue item and starts playback from first lyric line', async () => {
+    plRepo.findPlaylistItemById.mockResolvedValue({ id: plItem, session_id: sid, song_id: song })
+    plRepo.setPlaylistItemsForStart.mockResolvedValue(true)
+    isSongAllowedOnPartyPlaylist.mockResolvedValue(true)
+    listLinesForSong.mockResolvedValue([
+      { lineNumber: 3, textEnglish: 'third' },
+      { lineNumber: 7, textEnglish: 'seventh' }
+    ])
+    buildPartyKaraokeState.mockResolvedValue({
+      sessionId: sid,
+      activeSong: { id: song, title: 'Song' },
+      activePlaylistItemId: plItem,
+      currentLineNumber: 3,
+      playbackStatus: 'playing',
+      lyricLines: [{ lineNumber: 3, textEnglish: 'third' }]
+    })
+    const client = {
+      query: vi.fn().mockImplementation(async (sql, params) => {
+        const s = String(sql)
+        if (s === 'BEGIN' || s === 'COMMIT' || s === 'ROLLBACK') return { rows: [] }
+        if (s.includes('UPDATE party_sessions') && s.includes("playback_status = 'playing'")) {
+          expect(params[0]).toBe(song)
+          expect(params[1]).toBe(plItem)
+          expect(params[2]).toBe(3)
+          expect(params[3]).toBe(sid)
+          return { rows: [{ id: sid }] }
+        }
+        return { rows: [] }
+      }),
+      release: vi.fn()
+    }
+    const pool = {
+      connect: vi.fn().mockResolvedValue(client)
+    }
+    const out = await startPartySong(/** @type {any} */ (pool), {
+      session: { id: sid, status: 'active' },
+      playlistItemId: plItem
+    })
+    expect(out.ok).toBe(true)
+    expect(plRepo.setPlaylistItemsForStart).toHaveBeenCalledWith(sid, plItem, client)
+    expect(buildPartyKaraokeState).toHaveBeenCalledWith(sid, /** @type {any} */ (pool), { role: 'host' })
+  })
+
   it('returns session_closed when party session is ended (V1: host end party blocks song start)', async () => {
     plRepo.findPlaylistItemById.mockResolvedValue({ session_id: sid, song_id: song })
     isSongAllowedOnPartyPlaylist.mockResolvedValue(true)

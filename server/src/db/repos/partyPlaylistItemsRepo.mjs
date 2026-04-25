@@ -5,6 +5,9 @@ const TAG_LIST_SQL = `(SELECT coalesce(array_agg(t.tag ORDER BY t.created_at, t.
 
 const PLAYLIST_SONG_SELECT = `ppi.id AS playlist_item_id,
   ppi.position,
+  ppi.item_status,
+  ppi.requested_by_guest_id,
+  req_guest.display_name AS requested_by_guest_display_name,
   s.*, ${TAG_LIST_SQL} AS tag_list,
   (s.audio_file_url IS NOT NULL OR s.instrumental_audio_path IS NOT NULL) AS audio_ok,
   EXISTS(SELECT 1 FROM lyric_lines ll WHERE ll.song_id = s.id LIMIT 1) AS lyrics_ok`
@@ -12,7 +15,7 @@ const PLAYLIST_SONG_SELECT = `ppi.id AS playlist_item_id,
 export async function listPlaylistBySessionId(sessionId, p) {
   const q = getDbPool(p)
   const { rows } = await q.query(
-    'SELECT * FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position, id',
+    'SELECT * FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position ASC, created_at ASC, id',
     [sessionId]
   )
   return rows
@@ -28,11 +31,12 @@ export async function listPlaylistWithSongsForSession(sessionId, p) {
     `SELECT ${PLAYLIST_SONG_SELECT}
      FROM party_playlist_items ppi
      INNER JOIN songs s ON s.id = ppi.song_id
+     LEFT JOIN party_guests req_guest ON req_guest.id = ppi.requested_by_guest_id
      WHERE ppi.session_id = $1::uuid
-     ORDER BY ppi.position ASC, ppi.id`,
+     ORDER BY ppi.position ASC, ppi.created_at ASC, ppi.id`,
     [sessionId]
   )
-  return rows.map((row) => mapPlaylistItemRow(row))
+  return rows.map((row) => mapPlaylistItemRow(row)).filter(Boolean)
 }
 
 function mapPlaylistItemRow(row) {
@@ -42,6 +46,10 @@ function mapPlaylistItemRow(row) {
     playlistItemId: row.playlist_item_id,
     position: row.position,
     itemStatus: row.item_status ?? 'pending',
+    requestedByGuestId: row.requested_by_guest_id ? String(row.requested_by_guest_id) : null,
+    requestedByGuestDisplayName: row.requested_by_guest_display_name
+      ? String(row.requested_by_guest_display_name)
+      : null,
     ...base,
     audioReady: row.audio_ok === true,
     lyricsReady: row.lyrics_ok === true
@@ -87,15 +95,16 @@ export async function nextPositionAtEnd(sessionId, c) {
  * @param {string} o.sessionId
  * @param {string} o.songId
  * @param {number} o.position
+ * @param {string | null | undefined} [o.requestedByGuestId]
  * @param {import('pg').Pool|import('pg').PoolClient} p
  */
 export async function addSongAtPosition(o, p) {
   const q = getDbPool(p)
   const { rows } = await q.query(
-    `INSERT INTO party_playlist_items (session_id, song_id, position)
-     VALUES ($1::uuid, $2::uuid, $3::int)
+    `INSERT INTO party_playlist_items (session_id, song_id, position, requested_by_guest_id)
+     VALUES ($1::uuid, $2::uuid, $3::int, $4::uuid)
      RETURNING *`,
-    [o.sessionId, o.songId, o.position]
+    [o.sessionId, o.songId, o.position, o.requestedByGuestId ?? null]
   )
   return rows[0]
 }
@@ -168,7 +177,7 @@ export async function setPlaylistItemStatus(id, status, c) {
 
 export async function compactPositions(sessionId, c) {
   const { rows } = await c.query(
-    'SELECT id FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position, id',
+    'SELECT id FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position ASC, created_at ASC, id',
     [sessionId]
   )
   let i = 0
@@ -186,13 +195,34 @@ export async function compactPositions(sessionId, c) {
  */
 export async function reorderByItemIds(sessionId, orderedItemIds, c) {
   const { rows: existing } = await c.query(
-    'SELECT id::text AS id FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position, id',
+    'SELECT id::text AS id FROM party_playlist_items WHERE session_id = $1::uuid ORDER BY position ASC, created_at ASC, id',
     [sessionId]
   )
   const ex = existing.map((r) => r.id).sort()
   const want = [...orderedItemIds].map(String).sort()
   if (ex.length !== want.length || ex.some((id, idx) => id !== want[idx])) {
     return false
+  }
+  const { rows: targetRows } = await c.query(
+    `SELECT id::text AS id, item_status
+     FROM party_playlist_items
+     WHERE session_id = $1::uuid
+       AND id = ANY($2::uuid[])`,
+    [sessionId, orderedItemIds]
+  )
+  if (targetRows.length !== orderedItemIds.length) {
+    return false
+  }
+  if (targetRows.some((r) => String(r.item_status || 'pending') !== 'pending')) {
+    return false
+  }
+  const tempOffset = 1000000
+  for (let i = 0; i < orderedItemIds.length; i++) {
+    await c.query('UPDATE party_playlist_items SET position = $2 WHERE id = $1::uuid AND session_id = $3::uuid', [
+      orderedItemIds[i],
+      tempOffset + i,
+      sessionId
+    ])
   }
   for (let i = 0; i < orderedItemIds.length; i++) {
     await c.query('UPDATE party_playlist_items SET position = $2 WHERE id = $1::uuid AND session_id = $3::uuid', [

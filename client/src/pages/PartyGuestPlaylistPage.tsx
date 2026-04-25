@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusPill } from '../components/ui/StatusPill'
 import { createPartySocket } from '../realtime/partySocket'
 
@@ -9,12 +9,29 @@ type Row = {
   playlistItemId: string
   position: number
   status: 'queued' | 'active' | 'completed' | 'skipped'
+  requestedByGuestId?: string | null
+  requestedByGuestDisplayName?: string | null
   id: string
   title: string
   difficulty: string | null
   tags: string[]
   audioReady: boolean
   lyricsReady: boolean
+}
+
+type AvailableSong = {
+  id: string
+  title: string
+  difficulty: string | null
+  tags: string[]
+  audioReady: boolean
+  lyricsReady: boolean
+}
+
+type SongPreview = {
+  song: { id: string; title: string }
+  languagePreference: string
+  previewLines: Array<{ lineNumber: number; text: string }>
 }
 
 function songGradient(d: string | null) {
@@ -47,6 +64,7 @@ function statusLabel(status: Row['status']): string {
 
 export function PartyGuestPlaylistPage() {
   const { partyCode } = useParams()
+  const nav = useNavigate()
   const [partySessionId, setPartySessionId] = useState<string | null>(null)
   const [partyClosed, setPartyClosed] = useState(false)
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -55,6 +73,12 @@ export function PartyGuestPlaylistPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [controlReq, setControlReq] = useState<string | null>(null)
   const [controlMsg, setControlMsg] = useState<string | null>(null)
+  const [leaveBusy, setLeaveBusy] = useState(false)
+  const [leaveErr, setLeaveErr] = useState<string | null>(null)
+  const [availableSongs, setAvailableSongs] = useState<AvailableSong[] | null>(null)
+  const [availableErr, setAvailableErr] = useState<string | null>(null)
+  const [previewBusySongId, setPreviewBusySongId] = useState<string | null>(null)
+  const [preview, setPreview] = useState<SongPreview | null>(null)
 
   const load = useCallback(async () => {
     if (!partyCode || !PC.test(partyCode)) return
@@ -78,7 +102,9 @@ export function PartyGuestPlaylistPage() {
       }
       setPartyClosed(false)
 
-      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`)
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`, {
+        credentials: 'include'
+      })
       const d = (await r.json().catch(() => ({}))) as { playlist?: Row[]; error?: string }
       if (r.status === 403) {
         if (d.error === 'not_available') {
@@ -94,6 +120,21 @@ export function PartyGuestPlaylistPage() {
         return
       }
       setRows(d.playlist ?? [])
+
+      const a = await fetch(`/api/party/${encodeURIComponent(partyCode)}/available-songs`, {
+        credentials: 'include'
+      })
+      const ab = (await a.json().catch(() => ({}))) as { songs?: AvailableSong[]; error?: string }
+      if (a.ok) {
+        setAvailableSongs(Array.isArray(ab.songs) ? ab.songs : [])
+        setAvailableErr(null)
+      } else if (a.status === 401) {
+        setAvailableSongs([])
+        setAvailableErr('join_first')
+      } else {
+        setAvailableSongs([])
+        setAvailableErr(ab.error || 'available_load')
+      }
     } catch {
       setErr('network')
     }
@@ -175,6 +216,28 @@ export function PartyGuestPlaylistPage() {
     }
   }
 
+  async function openPreview(songId: string) {
+    if (!partyCode) return
+    setPreviewBusySongId(songId)
+    setPreview(null)
+    try {
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/songs/${encodeURIComponent(songId)}/preview`, {
+        credentials: 'include'
+      })
+      const d = (await r.json().catch(() => ({}))) as SongPreview & { error?: string }
+      if (!r.ok) {
+        setAvailableErr(d.error || 'preview_load')
+        return
+      }
+      setAvailableErr(null)
+      setPreview(d)
+    } catch {
+      setAvailableErr('network')
+    } finally {
+      setPreviewBusySongId(null)
+    }
+  }
+
   async function requestControl(songId: string) {
     if (!partyCode) return
     setControlReq(songId)
@@ -207,6 +270,27 @@ export function PartyGuestPlaylistPage() {
     }
   }
 
+  async function leaveParty() {
+    if (!partyCode) return
+    setLeaveBusy(true)
+    setLeaveErr(null)
+    try {
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/leave`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (!r.ok) {
+        setLeaveErr('Could not leave the party. Please try again.')
+        return
+      }
+      nav('/', { replace: true })
+    } catch {
+      setLeaveErr('Network error while leaving.')
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
   if (!partyCode || !PC.test(partyCode)) {
     return <p className="text-sm text-white/80">Invalid code.</p>
   }
@@ -235,13 +319,24 @@ export function PartyGuestPlaylistPage() {
     <div className="mx-auto w-full min-h-[70dvh] max-w-2xl space-y-5 text-left sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-black sm:text-3xl md:text-4xl">Song picks</h1>
-        <Link
-          to={`/party/${encodeURIComponent(partyCode)}`}
-          className="min-h-11 touch-manipulation rounded-2xl bg-fuchsia-500/90 px-4 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-fuchsia-900/30"
-        >
-          Back to stage
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to={`/party/${encodeURIComponent(partyCode)}`}
+            className="min-h-11 touch-manipulation rounded-2xl bg-fuchsia-500/90 px-4 py-2.5 text-sm font-extrabold text-white shadow-lg shadow-fuchsia-900/30"
+          >
+            Back to stage
+          </Link>
+          <button
+            type="button"
+            className="min-h-11 touch-manipulation rounded-2xl border border-rose-300/35 bg-rose-600/50 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-60"
+            disabled={leaveBusy}
+            onClick={() => void leaveParty()}
+          >
+            {leaveBusy ? 'Leaving…' : 'Leave party'}
+          </button>
+        </div>
       </div>
+      {leaveErr && <p className="text-sm text-rose-200">{leaveErr}</p>}
 
       {err === 'unavailable' && (
         <div className="fs-card-lobby rounded-3xl p-5" role="alert">
@@ -292,6 +387,74 @@ export function PartyGuestPlaylistPage() {
           That song is no longer in the playlist.
         </p>
       )}
+      <section className="fs-card-lobby rounded-3xl p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-xl font-black text-cyan-100">Available Songs</h2>
+          <span className="text-xs font-bold text-white/70">Party only</span>
+        </div>
+        {availableErr === 'join_first' && (
+          <p className="text-sm text-amber-100">Join this party first to browse available songs.</p>
+        )}
+        {availableErr && availableErr !== 'join_first' && (
+          <p className="text-sm text-rose-200">Could not load available songs right now.</p>
+        )}
+        {availableSongs && availableSongs.length === 0 && !availableErr && (
+          <div className="rounded-2xl border border-dashed border-white/25 bg-white/5 p-4 text-sm text-white/80">
+            No available songs right now. Ask the host to publish more songs.
+          </div>
+        )}
+        {availableSongs && availableSongs.length > 0 && (
+          <ul className="space-y-2">
+            {availableSongs.map((song) => (
+              <li key={song.id} className="rounded-2xl border border-white/20 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-extrabold text-white">{song.title}</p>
+                    {song.difficulty && <p className="text-xs text-white/70">{song.difficulty}</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-cyan-200/35 bg-cyan-500/25 px-3 py-1.5 text-xs font-extrabold text-white disabled:opacity-60"
+                      onClick={() => void openPreview(song.id)}
+                      disabled={previewBusySongId === song.id}
+                    >
+                      {previewBusySongId === song.id ? 'Loading…' : 'Preview lyrics'}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl bg-amber-300 px-3 py-1.5 text-xs font-extrabold text-slate-900 disabled:opacity-60"
+                      onClick={() => void requestSong(song.id)}
+                      disabled={!!req}
+                    >
+                      {req === song.id ? 'Sending…' : 'Suggest song'}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {preview && (
+          <div className="mt-3 rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-3">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-fuchsia-100/85">
+              Lyrics preview ({preview.languagePreference})
+            </p>
+            <p className="mt-1 font-extrabold text-white">{preview.song.title}</p>
+            {preview.previewLines.length === 0 ? (
+              <p className="mt-2 text-sm text-amber-100">No lyrics available for this song.</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {preview.previewLines.map((line) => (
+                  <li key={line.lineNumber} className="text-sm text-white/90">
+                    {line.text || '—'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
       {rows && rows.length === 0 && !err && (
         <div className="fs-card-lobby rounded-3xl p-8 text-center sm:p-10" role="status">
           <p className="text-4xl" aria-hidden>
@@ -313,6 +476,11 @@ export function PartyGuestPlaylistPage() {
                 <div className="p-4 sm:p-5">
                   <p className="text-xs font-extrabold uppercase tracking-widest text-white/70">In queue</p>
                   <h3 className="mt-1 text-balance text-lg font-extrabold text-white sm:text-xl">{p.title}</h3>
+                  {p.requestedByGuestDisplayName ? (
+                    <p className="mt-1 text-xs font-bold text-cyan-100/90">
+                      Requested by {p.requestedByGuestDisplayName}
+                    </p>
+                  ) : null}
                   <StatusPill
                     kind={statusKind(p.status)}
                     className="mt-2 w-fit text-xs capitalize"

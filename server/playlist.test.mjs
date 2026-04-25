@@ -10,6 +10,7 @@ import * as plRepo from './src/db/repos/partyPlaylistItemsRepo.mjs'
 import * as songsRepo from './src/db/repos/songsRepo.mjs'
 import * as controlRepo from './src/db/repos/controlRequestsRepo.mjs'
 import * as partyGuestsRepo from './src/db/repos/partyGuestsRepo.mjs'
+import * as lyricLinesRepo from './src/db/repos/lyricLinesRepo.mjs'
 import * as appSettingsService from './src/services/appSettingsService.mjs'
 import * as guestJoinSvc from './src/services/guestJoin.mjs'
 import * as partyExpiryService from './src/services/partyExpiryService.mjs'
@@ -65,6 +66,10 @@ vi.mock('./src/db/repos/controlRequestsRepo.mjs', () => ({
 
 vi.mock('./src/db/repos/partyGuestsRepo.mjs', () => ({
   findGuestByTokenForPartyCode: vi.fn()
+}))
+
+vi.mock('./src/db/repos/lyricLinesRepo.mjs', () => ({
+  listLinesForSong: vi.fn()
 }))
 
 vi.mock('./src/db/repos/songsRepo.mjs', () => ({
@@ -126,6 +131,7 @@ const {
   rejectSongRequestById
 } = controlRepo
 const { findGuestByTokenForPartyCode } = partyGuestsRepo
+const { listLinesForSong } = lyricLinesRepo
 const { getIntSetting } = appSettingsService
 const { performGuestJoin } = guestJoinSvc
 const { ensurePartyNotExpired } = partyExpiryService
@@ -168,6 +174,8 @@ function songCard(id) {
     tags: ['a'],
     playlistItemId: plItem1,
     position: 0,
+    requestedByGuestId: null,
+    requestedByGuestDisplayName: null,
     audioReady: true,
     lyricsReady: true
   }
@@ -181,6 +189,8 @@ function songCardTwo() {
     tags: ['b'],
     playlistItemId: plItem2,
     position: 1,
+    requestedByGuestId: null,
+    requestedByGuestDisplayName: null,
     audioReady: true,
     lyricsReady: true
   }
@@ -263,6 +273,10 @@ beforeEach(() => {
     }
     return null
   })
+  listLinesForSong.mockResolvedValue([
+    { lineNumber: 1, textEnglish: 'Hello', textHindi: 'नमस्ते', textHebrew: 'שלום' },
+    { lineNumber: 2, textEnglish: 'World', textHindi: 'दुनिया', textHebrew: 'עולם' }
+  ])
 })
 
 describe('host party playlist', () => {
@@ -369,14 +383,15 @@ describe('host party playlist', () => {
     expect(r.body.error).toBe('song_not_allowed')
   })
 
-  it('reorder updates order', async () => {
+  it('reorder moves item up and returns persisted order', async () => {
     const i1 = 'aaaaaaaa-1111-4111-8111-111111111101'
     const i2 = 'aaaaaaaa-1111-4111-8111-111111111102'
+    const reordered = [
+      { ...songCard(song2), playlistItemId: i2, position: 0, id: song2 },
+      { ...songCard(song1), playlistItemId: i1, position: 1, id: song1 }
+    ]
     listPlaylistWithSongsForSession
-      .mockResolvedValueOnce([
-        { ...songCard(song1), playlistItemId: i1, position: 0, id: song1 },
-        { ...songCard(song1), playlistItemId: i2, id: '22222222-2222-4222-8222-222222222222' }
-      ])
+      .mockResolvedValueOnce(reordered)
     reorderByItemIds.mockImplementation(async (sessionId, ids) => {
       expect(ids).toEqual([i2, i1])
       return true
@@ -388,7 +403,58 @@ describe('host party playlist', () => {
       .post(`/api/host/parties/${prId}/playlist/reorder`)
       .send({ orderedItemIds: [i2, i1] })
     expect(r.status).toBe(200)
+    expect(r.body.playlist).toEqual(reordered)
     expect(reorderByItemIds).toHaveBeenCalled()
+  })
+
+  it('reorder moves item down and returns persisted order', async () => {
+    const i1 = 'aaaaaaaa-1111-4111-8111-111111111101'
+    const i2 = 'aaaaaaaa-1111-4111-8111-111111111102'
+    const reordered = [
+      { ...songCard(song2), playlistItemId: i2, position: 0, id: song2 },
+      { ...songCard(song1), playlistItemId: i1, position: 1, id: song1 }
+    ]
+    listPlaylistWithSongsForSession.mockResolvedValueOnce(reordered)
+    reorderByItemIds.mockImplementation(async (sessionId, ids) => {
+      expect(ids).toEqual([i2, i1])
+      return true
+    })
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent)
+    const r = await agent
+      .post(`/api/host/parties/${prId}/playlist/reorder`)
+      .send({ orderedItemIds: [i2, i1] })
+    expect(r.status).toBe(200)
+    expect(r.body.playlist).toEqual(reordered)
+    expect(reorderByItemIds).toHaveBeenCalled()
+  })
+
+  it('reorder broadcast emits server-sorted playlist payload', async () => {
+    const i1 = 'aaaaaaaa-1111-4111-8111-111111111101'
+    const i2 = 'aaaaaaaa-1111-4111-8111-111111111102'
+    const reordered = [
+      { ...songCard(song2), playlistItemId: i2, position: 0, id: song2 },
+      { ...songCard(song1), playlistItemId: i1, position: 1, id: song1 }
+    ]
+    listPlaylistWithSongsForSession.mockResolvedValueOnce(reordered)
+    reorderByItemIds.mockResolvedValue(true)
+    const emit = vi.fn()
+    const app = makeApp()
+    app.set('io', { to: () => ({ emit }) })
+    const agent = request.agent(app)
+    await loginHost(agent)
+    const r = await agent
+      .post(`/api/host/parties/${prId}/playlist/reorder`)
+      .send({ orderedItemIds: [i2, i1] })
+    expect(r.status).toBe(200)
+    expect(emit).toHaveBeenCalledWith(
+      'playlist:updated',
+      expect.objectContaining({
+        source: 'host:reorder',
+        playlist: reordered
+      })
+    )
   })
 
   it('playlist API exposes available published songs for source panel', async () => {
@@ -435,6 +501,39 @@ describe('host party playlist', () => {
     expect(r.status).toBe(200)
     expect(r.body.requests).toHaveLength(1)
     expect(r.body.requests[0]?.songTitle).toBe('Hit')
+    expect(r.body.requests[0]?.guestDisplayName).toBe('Alice')
+    expect(listPendingSongRequestsBySessionId).toHaveBeenCalledWith(sid, expect.anything())
+  })
+
+  it('host sees multiple pending song requests separately', async () => {
+    listPendingSongRequestsBySessionId.mockResolvedValue([
+      {
+        id: 'req-song-1',
+        party_guest_id: 'guest-1',
+        guest_display_name: 'Alice',
+        song_id: song1,
+        song_title: 'Hit',
+        status: 'pending',
+        created_at: new Date('2026-01-01T00:00:00.000Z').toISOString()
+      },
+      {
+        id: 'req-song-2',
+        party_guest_id: 'guest-2',
+        song_id: song2,
+        guest_display_name: 'Bob',
+        song_title: 'Second Hit',
+        status: 'pending',
+        created_at: new Date('2026-01-01T00:01:00.000Z').toISOString()
+      }
+    ])
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent)
+    const r = await agent.get(`/api/host/parties/${prId}/song-requests`)
+    expect(r.status).toBe(200)
+    expect(r.body.requests).toHaveLength(2)
+    expect(r.body.requests[0]?.guestDisplayName).toBe('Alice')
+    expect(r.body.requests[1]?.guestDisplayName).toBe('Bob')
   })
 
   it('host sees pending control requests with song title', async () => {
@@ -444,6 +543,7 @@ describe('host party playlist', () => {
         party_guest_id: 'guest-1',
         guest_display_name: 'Alice',
         song_id: song1,
+        playlist_item_id: plItem1,
         song_title: 'Hit',
         created_at: new Date().toISOString()
       }
@@ -454,7 +554,9 @@ describe('host party playlist', () => {
     const r = await agent.get(`/api/host/parties/${prId}/control-requests`)
     expect(r.status).toBe(200)
     expect(r.body.requests).toHaveLength(1)
+    expect(r.body.requests[0]?.guestDisplayName).toBe('Alice')
     expect(r.body.requests[0]?.songTitle).toBe('Hit')
+    expect(r.body.requests[0]?.playlistItemId).toBe(plItem1)
   })
 
   it('host approves song request and song appears in playlist', async () => {
@@ -468,7 +570,30 @@ describe('host party playlist', () => {
     await loginHost(agent)
     const r = await agent.post(`/api/host/parties/${prId}/song-requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab/approve`)
     expect(r.status).toBe(200)
-    expect(addSongAtPosition).toHaveBeenCalled()
+    expect(addSongAtPosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: sid,
+        songId: song1,
+        requestedByGuestId: 'guest-1'
+      }),
+      expect.anything()
+    )
+  })
+
+  it('host playlist payload keeps requested-by guest display name', async () => {
+    listPlaylistWithSongsForSession.mockResolvedValue([
+      {
+        ...songCard(song1),
+        requestedByGuestId: 'guest-1',
+        requestedByGuestDisplayName: 'Alice'
+      }
+    ])
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent)
+    const r = await agent.get(`/api/host/parties/${prId}/playlist`)
+    expect(r.status).toBe(200)
+    expect(r.body.playlist[0]?.requestedByGuestDisplayName).toBe('Alice')
   })
 
   it('approving song request is blocked when queue is full', async () => {
@@ -540,6 +665,21 @@ describe('guest party playlist', () => {
     expect(r1.body.playlist[0]?.title).toBe('Hit')
     expect(r2.body.playlist[0]?.title).toBe('Other Party Song')
     expect(r1.body.playlist[0]?.title).not.toBe(r2.body.playlist[0]?.title)
+  })
+
+  it('guest playlist payload keeps requested-by guest display name', async () => {
+    findSessionByPartyCode.mockResolvedValue({ id: sid, status: 'approved' })
+    listPlaylistWithSongsForSession.mockResolvedValue([
+      {
+        ...songCard(song1),
+        requestedByGuestId: 'guest-1',
+        requestedByGuestDisplayName: 'Alice'
+      }
+    ])
+    const app = makeApp()
+    const r = await request(app).get('/api/party/MyCode9/playlist')
+    expect(r.status).toBe(200)
+    expect(r.body.playlist[0]?.requestedByGuestDisplayName).toBe('Alice')
   })
 
   it('guest can create song request', async () => {
@@ -621,6 +761,76 @@ describe('guest party playlist', () => {
       .send({ songId: song1 })
     expect(controlReq.status).toBe(403)
     expect(controlReq.body.error).toBe('not_available')
+  })
+
+  it('joined guest can list available songs (published, non-blocked)', async () => {
+    findSessionByPartyCode.mockResolvedValue({ id: sid, status: 'active' })
+    listAvailableSongsForPartyPanel.mockResolvedValue([
+      {
+        id: song1,
+        title: 'Allowed Song',
+        difficulty: 'easy',
+        tags: ['party'],
+        status: 'published',
+        rightsStatus: 'owned_original',
+        audioReady: true,
+        lyricsReady: true
+      },
+      {
+        id: song2,
+        title: 'Blocked Song',
+        difficulty: 'easy',
+        tags: [],
+        status: 'published',
+        rightsStatus: 'blocked',
+        audioReady: true,
+        lyricsReady: true
+      }
+    ])
+    const app = makeApp()
+    const r = await request(app)
+      .get('/api/party/MyCode9/available-songs')
+      .set('Cookie', ['fs_guest=abc123def'])
+    expect(r.status).toBe(200)
+    expect(r.body.songs).toHaveLength(1)
+    expect(r.body.songs[0]?.title).toBe('Allowed Song')
+  })
+
+  it('unauthenticated user cannot list available songs', async () => {
+    const app = makeApp()
+    const r = await request(app).get('/api/party/MyCode9/available-songs')
+    expect(r.status).toBe(401)
+  })
+
+  it('guest lyrics preview uses selected guest language', async () => {
+    findSessionByPartyCode.mockResolvedValue({ id: sid, status: 'active' })
+    findGuestByTokenForPartyCode.mockResolvedValue({
+      id: 'guest-1',
+      display_name: 'Guest',
+      language_preference: 'hindi',
+      session_pk: sid,
+      session_status: 'active',
+      max_guests: 30
+    })
+    listAvailableSongsForPartyPanel.mockResolvedValue([
+      {
+        id: song1,
+        title: 'Allowed Song',
+        difficulty: 'easy',
+        tags: ['party'],
+        status: 'published',
+        rightsStatus: 'owned_original',
+        audioReady: true,
+        lyricsReady: true
+      }
+    ])
+    const app = makeApp()
+    const r = await request(app)
+      .get(`/api/party/MyCode9/songs/${song1}/preview`)
+      .set('Cookie', ['fs_guest=abc123def'])
+    expect(r.status).toBe(200)
+    expect(r.body.languagePreference).toBe('hindi')
+    expect(r.body.previewLines[0]?.text).toBe('नमस्ते')
   })
 
   it('guest cannot join auto-closed party after lazy expiry check', async () => {

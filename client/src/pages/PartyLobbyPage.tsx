@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createPartySocket } from '../realtime/partySocket'
 import { pickLineText } from '../lib/lyricText'
 import { karaokeVisibleLineNumbers } from '../lib/lyricPreview'
@@ -36,6 +36,8 @@ type LobbyPlaylistItem = {
   playlistItemId: string
   position: number
   status?: 'queued' | 'active' | 'completed' | 'skipped'
+  requestedByGuestId?: string | null
+  requestedByGuestDisplayName?: string | null
   title: string
 }
 
@@ -50,6 +52,7 @@ function initialsFromName(name: string): string {
 
 export function PartyLobbyPage() {
   const { partyCode } = useParams()
+  const nav = useNavigate()
   const [data, setData] = useState<{
     guestId: string
     displayName: string
@@ -70,6 +73,8 @@ export function PartyLobbyPage() {
   const [playlistPreview, setPlaylistPreview] = useState<LobbyPlaylistItem[]>([])
   const [maxGuests, setMaxGuests] = useState<number>(30)
   const [isLandscapePhone, setIsLandscapePhone] = useState(false)
+  const [leaveBusy, setLeaveBusy] = useState(false)
+  const [leaveErr, setLeaveErr] = useState<string | null>(null)
 
   useEffect(() => {
     if (!partyCode || !PC.test(partyCode)) {
@@ -208,9 +213,14 @@ export function PartyLobbyPage() {
       const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`, {
         credentials: 'include'
       })
-      const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[] }
+      const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[]; error?: string }
       if (r.ok) {
         setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist : [])
+        return
+      }
+      if (r.status === 403 && d.error === 'not_available') {
+        setPartyClosed(true)
+        setPlaylistPreview([])
       }
     }
     socket.on('song:finished', onSongFinished)
@@ -321,6 +331,28 @@ export function PartyLobbyPage() {
     }
   }
 
+  async function leaveParty() {
+    if (!partyCode) return
+    setLeaveBusy(true)
+    setLeaveErr(null)
+    try {
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/leave`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (!r.ok) {
+        setLeaveErr('Could not leave the party. Please try again.')
+        return
+      }
+      socketRef.current?.close()
+      nav('/', { replace: true })
+    } catch {
+      setLeaveErr('Network error while leaving.')
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
   const hasSong = !!k?.activeSong?.id
 
   const audioVariant: KaraokeAudioVariant = (() => {
@@ -412,15 +444,26 @@ export function PartyLobbyPage() {
             <span className="font-extrabold">Language: </span>
             <span className="font-black capitalize text-amber-100">{lineLang}</span>
           </p>
-          {partyCode && (
-            <Link
-              to={`/party/${encodeURIComponent(partyCode)}/playlist`}
-              className="min-h-11 touch-manipulation rounded-2xl bg-white/20 px-4 py-2 text-sm font-extrabold text-white ring-2 ring-white/20 hover:bg-white/30"
+          <div className="flex flex-wrap gap-2">
+            {partyCode && (
+              <Link
+                to={`/party/${encodeURIComponent(partyCode)}/playlist`}
+                className="min-h-11 touch-manipulation rounded-2xl bg-white/20 px-4 py-2 text-sm font-extrabold text-white ring-2 ring-white/20 hover:bg-white/30"
+              >
+                Browse songs
+              </Link>
+            )}
+            <button
+              type="button"
+              className="min-h-11 touch-manipulation rounded-2xl border border-rose-300/35 bg-rose-600/50 px-4 py-2 text-sm font-extrabold text-white disabled:opacity-60"
+              disabled={leaveBusy}
+              onClick={() => void leaveParty()}
             >
-              Browse songs
-            </Link>
-          )}
+              {leaveBusy ? 'Leaving…' : 'Leave party'}
+            </button>
+          </div>
         </div>
+        {leaveErr && <p className="text-sm text-rose-200">{leaveErr}</p>}
       </div>
 
       {k?.controller && (
@@ -491,6 +534,10 @@ export function PartyLobbyPage() {
                   )
                 )}
               </div>
+            ) : lines.length === 0 ? (
+              <p className="text-center text-base font-bold text-amber-100 sm:text-left">
+                No lyrics available for this song.
+              </p>
             ) : (
               <p className="fs-lyric-hero text-center sm:text-left">—</p>
             )}
@@ -524,6 +571,11 @@ export function PartyLobbyPage() {
               >
                 <span className="text-xs font-black text-cyan-200">#{item.position + 1}</span>{' '}
                 <span className="font-bold text-white">{item.title}</span>
+                {item.requestedByGuestDisplayName ? (
+                  <span className="ml-2 text-xs text-cyan-100/90">
+                    Requested by {item.requestedByGuestDisplayName}
+                  </span>
+                ) : null}
                 {item.status ? (
                   <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-bold capitalize text-white/90">
                     {item.status}

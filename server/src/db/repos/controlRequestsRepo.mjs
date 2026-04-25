@@ -47,10 +47,24 @@ export async function listPendingBySessionId(sessionId, p) {
        cr.status,
        cr.created_at,
        g.display_name AS guest_display_name,
-       s.title AS song_title
+       s.title AS song_title,
+       ppi.id AS playlist_item_id
      FROM control_requests cr
      INNER JOIN party_guests g ON g.id = cr.party_guest_id
      LEFT JOIN songs s ON s.id = cr.song_id
+     LEFT JOIN LATERAL (
+       SELECT p.id
+       FROM party_playlist_items p
+       WHERE p.session_id = cr.session_id
+         AND p.song_id = cr.song_id
+         AND p.item_status IN ('active'::party_playlist_item_status, 'pending'::party_playlist_item_status)
+       ORDER BY
+         CASE WHEN p.item_status = 'active'::party_playlist_item_status THEN 0 ELSE 1 END,
+         p.position ASC,
+         p.created_at ASC,
+         p.id ASC
+       LIMIT 1
+     ) ppi ON true
      WHERE cr.session_id = $1::uuid
        AND cr.status = 'pending'
        AND cr.request_kind = 'control'

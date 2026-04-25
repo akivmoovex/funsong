@@ -12,7 +12,8 @@ const GUEST_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12'
 const SONG_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const GUEST_TOK = 'aabbccdd001122'
 
-function makeControlRequestPool() {
+function makeControlRequestPool(opts = {}) {
+  const hasActiveSong = opts.hasActiveSong !== false
   return {
     query: async (/** @type {string} */ sql, /** @type {unknown[]} */ params) => {
       const s = String(sql)
@@ -41,13 +42,36 @@ function makeControlRequestPool() {
                 id: SESSION_ID,
                 status: 'active',
                 party_code: CODE,
-                active_song_id: SONG_ID,
-                playback_status: 'playing'
+                active_song_id: hasActiveSong ? SONG_ID : null,
+                playback_status: hasActiveSong ? 'playing' : 'idle'
               }
             ]
           }
         }
         return { rows: [] }
+      }
+      if (s.includes('FROM party_playlist_items ppi') && s.includes('INNER JOIN songs s')) {
+        return {
+          rows: [
+            {
+              playlist_item_id: 'f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a20',
+              position: 0,
+              item_status: 'pending',
+              id: SONG_ID,
+              title: 'Demo song',
+              difficulty: null,
+              is_public: true,
+              status: 'published',
+              rights_status: 'clear',
+              tags: [],
+              audio_file_url: null,
+              instrumental_audio_path: null,
+              tag_list: [],
+              audio_ok: true,
+              lyrics_ok: true
+            }
+          ]
+        }
       }
       if (s.includes('FROM control_requests') && s.includes('party_guest_id = $2::uuid') && s.includes('pending')) {
         return { rowCount: 0 }
@@ -140,6 +164,21 @@ describe('POST /api/party/:code/request-control', () => {
       .post(`/api/party/${encodeURIComponent(CODE)}/request-control`)
       .set('Cookie', [`fs_guest=${GUEST_TOK}`])
       .send({ songId: SONG_ID })
+    expect(r.status).toBe(201)
+    expect(r.body.ok).toBe(true)
+    expect(r.body.request?.songId).toBe(SONG_ID)
+  })
+
+  it('creates a pending request from queued song when no active song', async () => {
+    const app = createApp({
+      sessionStore: new session.MemoryStore(),
+      getPool: () => makeControlRequestPool({ hasActiveSong: false })
+    })
+    app.set('io', { to: () => ({ emit: vi.fn() }) })
+    const r = await request(app)
+      .post(`/api/party/${encodeURIComponent(CODE)}/request-control`)
+      .set('Cookie', [`fs_guest=${GUEST_TOK}`])
+      .send({})
     expect(r.status).toBe(201)
     expect(r.body.ok).toBe(true)
     expect(r.body.request?.songId).toBe(SONG_ID)

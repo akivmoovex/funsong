@@ -268,6 +268,9 @@ export function createHostPartyPlaylistRouter(d) {
           partyGuestId: String(/** @type {any} */ (r).party_guest_id),
           guestDisplayName: String(/** @type {any} */ (r).guest_display_name),
           songId: /** @type {any} */ (r).song_id ? String(/** @type {any} */ (r).song_id) : null,
+          playlistItemId: /** @type {any} */ (r).playlist_item_id
+            ? String(/** @type {any} */ (r).playlist_item_id)
+            : null,
           songTitle: /** @type {any} */ (r).song_title
             ? String(/** @type {any} */ (r).song_title)
             : null,
@@ -423,7 +426,8 @@ export function createHostPartyPlaylistRouter(d) {
             {
               sessionId: String(session.id),
               songId,
-              position: pos
+              position: pos,
+              requestedByGuestId: reqRow.party_guest_id ? String(reqRow.party_guest_id) : null
             },
             c
           )
@@ -440,7 +444,11 @@ export function createHostPartyPlaylistRouter(d) {
         c.release()
       }
       const io = getSocketIo(req)
-      emitPartyPlaylistUpdated(io, String(session.id), { source: 'song_request:approved' })
+      const playlist = await plRepo.listPlaylistWithSongsForSession(String(session.id), pool)
+      emitPartyPlaylistUpdated(io, String(session.id), {
+        source: 'song_request:approved',
+        playlist
+      })
       await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:approved', {
         requestId
       })
@@ -586,7 +594,10 @@ export function createHostPartyPlaylistRouter(d) {
           return res.status(500).json({ error: 'insert_failed' })
         }
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
-        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:add' })
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), {
+          source: 'host:add',
+          playlist
+        })
         return res.status(201).json({ playlist, added: row.id })
       } catch (e) {
         try {
@@ -626,7 +637,10 @@ export function createHostPartyPlaylistRouter(d) {
         await plRepo.compactPositions(session.id, c)
         await c.query('COMMIT')
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
-        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:remove' })
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), {
+          source: 'host:remove',
+          playlist
+        })
         return res.json({ playlist })
       } catch (e) {
         try {
@@ -669,7 +683,10 @@ export function createHostPartyPlaylistRouter(d) {
         }
         await c.query('COMMIT')
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
-        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:reorder' })
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), {
+          source: 'host:reorder',
+          playlist
+        })
         return res.json({ playlist })
       } catch (e) {
         try {

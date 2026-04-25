@@ -111,3 +111,33 @@ Legend:
 | 83 | Forgot-password submit | Neutral response always shown (existing/non-existing email) |  |  |
 | 84 | Super admin reset queue | Super admin can open pending password reset requests page |  |  |
 | 85 | Host admin access guard | Host cannot access super-admin pages/APIs |  |  |
+
+## 51B–51H Final QA Scenarios (host queue, join, leave, suggestions)
+
+Run DB migrations before this pass (includes `021_party_playlist_requested_by_guest.sql` for guest-requested queue labels).
+
+| # | Scenario | Expected Result | Pass/Fail | Notes |
+|---|----------|-----------------|-----------|-------|
+| 86 | Homepage join code form | “Join Party” section with code field and submit appears on `/` |  |  |
+| 87 | Homepage valid code | Submitting a valid code navigates to `/join/:code` (trimmed) |  |  |
+| 88 | Guest join via QR/link | `/join/:partyCode` join flow still works as before |  |  |
+| 89 | Guest leave party | Leave succeeds, cookie cleared, guest lands on home |  |  |
+| 90 | Host presence after guest leave | `guests:updated` lowers count; departed guest not in connected list |  |  |
+| 91 | Host queue add two songs | Both appear in order |  |  |
+| 92 | Host reorder (move up) | Order updates immediately |  |  |
+| 93 | Reorder persistence | Same order after ~1s and after full page refresh |  |  |
+| 94 | Guest queue order | Guest lobby/playlist pages match host order |  |  |
+| 95 | Host start party | Session becomes `active` |  |  |
+| 96 | Host start first song | Lyrics area shows current lines (or explicit no-lyrics message) |  |  |
+| 97 | Guest lyrics | Guest lobby shows same lyric state / no-lyrics message |  |  |
+| 98 | Guest request control | Pending control request created; host panel lists it |  |  |
+| 99 | Host approve control | Controller becomes that guest; guest gets on-screen controls when applicable |  |  |
+| 100 | Guest available songs | Authenticated guest can open list (published, non-blocked only) |  |  |
+| 101 | Guest lyric preview | Preview loads lines for chosen language |  |  |
+| 102 | Guest suggest song | Suggestion appears on host with guest name + time |  |  |
+| 103 | Host approve suggestion | Song enters queue with “Requested by (guest name)” |  |  |
+| 104 | All clients queue sync | Host + guests see `playlist:updated` / refresh consistent |  |  |
+| 105 | Host end party | Guests see ended UI; joins blocked |  |  |
+| 106 | Playlist refresh after end | If `playlist:updated` runs while party is ended, lobby shows ended state (playlist API `403 not_available`) |  |  |
+| 107 | Super admin | Existing super-admin login and guarded routes unchanged |  |  |
+| 108 | Profile / My Songs / signup | Existing account flows still work |  |  |

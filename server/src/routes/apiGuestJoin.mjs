@@ -1,14 +1,29 @@
 import { Router } from 'express'
-import { findGuestByTokenForPartyCode } from '../db/repos/partyGuestsRepo.mjs'
-import { readGuestTokenFromRequest, setGuestTokenCookie, newGuestToken } from '../guest/cookies.mjs'
+import {
+  findGuestByTokenForPartyCode,
+  updatePartyGuestConnectionState
+} from '../db/repos/partyGuestsRepo.mjs'
+import {
+  readGuestTokenFromRequest,
+  setGuestTokenCookie,
+  clearGuestTokenCookie,
+  newGuestToken
+} from '../guest/cookies.mjs'
 import { getJoinPreview, performGuestJoin } from '../services/guestJoin.mjs'
 import { findSessionByPartyCode } from '../db/repos/partySessionsRepo.mjs'
-import { getSongStreamMeta, isSongAllowedOnPartyPlaylist } from '../db/repos/songsRepo.mjs'
+import { setCurrentControllerGuest } from '../db/repos/partySessionsRepo.mjs'
+import {
+  getSongStreamMeta,
+  isSongAllowedOnPartyPlaylist,
+  listAvailableSongsForPartyPanel
+} from '../db/repos/songsRepo.mjs'
+import { listLinesForSong } from '../db/repos/lyricLinesRepo.mjs'
 import { buildPartyKaraokeState } from '../services/partyKaraokeState.mjs'
+import { pickLineTextForLanguage } from '../services/partyKaraokeState.mjs'
 import { streamAudioFileToResponse } from '../audio/streamFile.mjs'
 import * as plRepo from '../db/repos/partyPlaylistItemsRepo.mjs'
 import * as crRepo from '../db/repos/controlRequestsRepo.mjs'
-import { emitControlAndPartyState } from '../services/partyRealtime.mjs'
+import { emitControlAndPartyState, emitPartyGuestsUpdated } from '../services/partyRealtime.mjs'
 import { ensurePartyNotExpired } from '../services/partyExpiryService.mjs'
 
 const PC = /^[A-Za-z0-9._-]{4,64}$/
@@ -23,6 +38,17 @@ function mapGuestPlaylistStatus(itemStatus) {
   if (raw === 'finished') return 'completed'
   if (raw === 'skipped') return 'skipped'
   return 'queued'
+}
+
+/**
+ * @param {unknown} x
+ * @returns {'english' | 'hindi' | 'hebrew'}
+ */
+function normalizeGuestLanguage(x) {
+  const raw = String(x || '').toLowerCase()
+  if (raw === 'hindi') return 'hindi'
+  if (raw === 'hebrew') return 'hebrew'
+  return 'english'
 }
 
 /**
@@ -300,15 +326,20 @@ export function createPartyGuestRouter(d) {
         }
         songIdToStore = wantSong
       } else {
-        const play = String(/** @type {any} */ (session).playback_status || 'idle')
         const active = /** @type {any} */ (session).active_song_id
-        if (!active) {
-          return res.status(400).json({ error: 'no_active_song' })
+        if (active) {
+          songIdToStore = String(active)
+        } else {
+          const playlist = await plRepo.listPlaylistWithSongsForSession(String(session.id), pool)
+          const preferred =
+            playlist.find((item) => String(item.itemStatus || 'pending') === 'active') ||
+            playlist.find((item) => String(item.itemStatus || 'pending') === 'pending') ||
+            null
+          if (!preferred?.id) {
+            return res.status(400).json({ error: 'no_active_song' })
+          }
+          songIdToStore = String(preferred.id)
         }
-        if (play !== 'playing' && play !== 'paused') {
-          return res.status(400).json({ error: 'no_active_song' })
-        }
-        songIdToStore = String(active)
       }
       const row = await crRepo.createRequest(
         {
@@ -329,6 +360,60 @@ export function createPartyGuestRouter(d) {
         ok: true,
         request: { id: row.id, songId: songIdToStore }
       })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.post('/:partyCode/leave', withRate, async (req, res, next) => {
+    try {
+      const code = String(req.params.partyCode || '')
+      if (!PC.test(code)) {
+        return res.status(400).json({ error: 'invalid_party_code' })
+      }
+      const pool = d.getPool()
+      if (!pool) {
+        return res.status(503).json({ error: 'no_database' })
+      }
+      const tok = readGuestTokenFromRequest(req)
+      if (!tok) {
+        clearGuestTokenCookie(res)
+        return res.status(401).json({ error: 'no_guest_session' })
+      }
+      const g = await findGuestByTokenForPartyCode(tok, code, pool)
+      if (!g) {
+        clearGuestTokenCookie(res)
+        return res.status(401).json({ error: 'invalid_guest_session' })
+      }
+      const session = await findSessionByPartyCode(code, pool)
+      if (!session) {
+        clearGuestTokenCookie(res)
+        return res.status(404).json({ error: 'party_not_found' })
+      }
+      if (String(g.session_pk) !== String(session.id)) {
+        clearGuestTokenCookie(res)
+        return res.status(403).json({ error: 'mismatch' })
+      }
+
+      await updatePartyGuestConnectionState(String(g.id), { isConnected: false }, pool)
+      const wasController =
+        String(session.current_controller_party_guest_id || '') === String(g.id)
+      if (wasController) {
+        await setCurrentControllerGuest(String(session.id), null, pool)
+      }
+      clearGuestTokenCookie(res)
+
+      const io = /** @type {import('socket.io').Server | undefined} */ (req.app.get('io'))
+      if (wasController) {
+        await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:revoked', {
+          partyGuestId: String(g.id),
+          source: 'guest:leave'
+        })
+      }
+      if (io) {
+        await emitPartyGuestsUpdated(io, String(session.id), d.getPool)
+      }
+      return res.json({ ok: true, redirect: '/' })
     } catch (e) {
       return next(e)
     }
@@ -362,6 +447,8 @@ export function createPartyGuestRouter(d) {
           playlistItemId: p.playlistItemId,
           position: p.position,
           status: mapGuestPlaylistStatus(p.itemStatus),
+          requestedByGuestId: p.requestedByGuestId ?? null,
+          requestedByGuestDisplayName: p.requestedByGuestDisplayName ?? null,
           id: p.id,
           title: p.title,
           difficulty: p.difficulty,
@@ -369,6 +456,119 @@ export function createPartyGuestRouter(d) {
           audioReady: p.audioReady,
           lyricsReady: p.lyricsReady
         }))
+      })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.get('/:partyCode/available-songs', async (req, res, next) => {
+    try {
+      const code = String(req.params.partyCode || '')
+      if (!PC.test(code)) {
+        return res.status(400).json({ error: 'invalid_party_code' })
+      }
+      const pool = d.getPool()
+      if (!pool) {
+        return res.status(503).json({ error: 'no_database' })
+      }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
+      const tok = readGuestTokenFromRequest(req)
+      if (!tok) {
+        return res.status(401).json({ error: 'no_guest_session' })
+      }
+      const g = await findGuestByTokenForPartyCode(tok, code, pool)
+      if (!g) {
+        return res.status(401).json({ error: 'invalid_guest_session' })
+      }
+      const s = await findSessionByPartyCode(code, pool)
+      if (!s) {
+        return res.status(404).json({ error: 'party_not_found' })
+      }
+      if (String(g.session_pk) !== String(s.id)) {
+        return res.status(403).json({ error: 'mismatch' })
+      }
+      if (s.status === 'ended' || s.status === 'disabled') {
+        return res.status(403).json({ error: 'not_available' })
+      }
+      const songs = await listAvailableSongsForPartyPanel(pool)
+      const safeSongs = songs
+        .filter((song) => String(song.status || '') === 'published')
+        .filter((song) => String(song.rightsStatus || '') !== 'blocked')
+      return res.json({
+        songs: safeSongs.map((song) => ({
+          id: String(song.id),
+          title: String(song.title || 'Untitled'),
+          difficulty: song.difficulty || null,
+          tags: Array.isArray(song.tags) ? song.tags : [],
+          audioReady: song.audioReady === true,
+          lyricsReady: song.lyricsReady === true
+        }))
+      })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.get('/:partyCode/songs/:songId/preview', async (req, res, next) => {
+    try {
+      const code = String(req.params.partyCode || '')
+      const songId = String(req.params.songId || '')
+      if (!PC.test(code)) {
+        return res.status(400).json({ error: 'invalid_party_code' })
+      }
+      if (!UUID.test(songId)) {
+        return res.status(400).json({ error: 'invalid_song_id' })
+      }
+      const pool = d.getPool()
+      if (!pool) {
+        return res.status(503).json({ error: 'no_database' })
+      }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
+      const tok = readGuestTokenFromRequest(req)
+      if (!tok) {
+        return res.status(401).json({ error: 'no_guest_session' })
+      }
+      const g = await findGuestByTokenForPartyCode(tok, code, pool)
+      if (!g) {
+        return res.status(401).json({ error: 'invalid_guest_session' })
+      }
+      const s = await findSessionByPartyCode(code, pool)
+      if (!s) {
+        return res.status(404).json({ error: 'party_not_found' })
+      }
+      if (String(g.session_pk) !== String(s.id)) {
+        return res.status(403).json({ error: 'mismatch' })
+      }
+      if (s.status === 'ended' || s.status === 'disabled') {
+        return res.status(403).json({ error: 'not_available' })
+      }
+      const songs = await listAvailableSongsForPartyPanel(pool)
+      const song = songs.find((x) => String(x.id) === songId)
+      if (!song || String(song.status || '') !== 'published' || String(song.rightsStatus || '') === 'blocked') {
+        return res.status(404).json({ error: 'song_not_available' })
+      }
+      const lines = await listLinesForSong(songId, pool)
+      const language = normalizeGuestLanguage(g.language_preference)
+      const previewLines = lines.slice(0, 4).map((line) => ({
+        lineNumber: Number(line.lineNumber),
+        text: pickLineTextForLanguage(line, language) || pickLineTextForLanguage(line, 'english') || ''
+      }))
+      return res.json({
+        song: {
+          id: String(song.id),
+          title: String(song.title || 'Untitled')
+        },
+        languagePreference: language,
+        previewLines
       })
     } catch (e) {
       return next(e)

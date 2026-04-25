@@ -45,3 +45,14 @@ export function setGuestTokenCookie(res, token) {
     `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE}${secure}`
   )
 }
+
+/**
+ * @param {import('express').Response} res
+ */
+export function clearGuestTokenCookie(res) {
+  const secure = secureInProd() ? '; Secure' : ''
+  res.setHeader(
+    'Set-Cookie',
+    `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
+  )
+}

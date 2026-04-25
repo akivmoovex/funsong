@@ -57,6 +57,129 @@ describe('App', () => {
     expect(screen.getByText(/Host a party/i)).toBeInTheDocument()
   })
 
+  it('homepage join code shows inline validation when empty', async () => {
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Join Party/i }))
+    expect(screen.getByText(/Enter a party code first\./i)).toBeInTheDocument()
+  })
+
+  it('homepage join code trims spaces and redirects to /join/:partyCode', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ user: null })
+        }) as unknown as Promise<Response>
+      }
+      if (url.includes('/api/join/JoinCode01')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              preview: {
+                canJoin: true,
+                full: false,
+                reason: null,
+                currentGuests: 2,
+                maxGuests: 30,
+                partyTitle: 'Fun Room',
+                status: 'active'
+              }
+            })
+        }) as unknown as Promise<Response>
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      }) as unknown as Promise<Response>
+    }) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
+    })
+    fireEvent.change(screen.getByLabelText(/Party code/i), {
+      target: { value: '  JoinCode01  ' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Join Party/i }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/How should we call you\?/i)).toBeInTheDocument()
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/join/JoinCode01',
+      expect.objectContaining({ credentials: 'include' })
+    )
+  })
+
+  it('direct /join/:partyCode route still renders join flow (QR path unchanged)', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ user: null })
+        }) as unknown as Promise<Response>
+      }
+      if (url.includes('/api/join/PartyQr88')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              preview: {
+                canJoin: true,
+                full: false,
+                reason: null,
+                currentGuests: 1,
+                maxGuests: 30,
+                partyTitle: 'QR Room',
+                status: 'active'
+              }
+            })
+        }) as unknown as Promise<Response>
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      }) as unknown as Promise<Response>
+    }) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/join/PartyQr88']}
+      >
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/How should we call you\?/i)).toBeInTheDocument()
+    })
+  })
+
   it('loads admin dashboard with monitoring-first actions', async () => {
     globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
