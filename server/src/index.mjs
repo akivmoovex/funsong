@@ -21,6 +21,7 @@ const host = '0.0.0.0'
 
 httpServer.listen(port, host, () => {
   const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development'
+  console.log(`[funsong] Node ${process.version} (use Node 20+ in production; see package.json engines)`)
   console.log(`FunSong server [${mode}] on http://localhost:${port} (bound ${host})`)
   if (process.env.NODE_ENV !== 'production') {
     const db = Boolean(String(process.env.DATABASE_URL || '').trim())
