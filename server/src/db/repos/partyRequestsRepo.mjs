@@ -54,6 +54,7 @@ export async function listPendingRequestsForAdmin(p) {
  *  partyName: string
  *  eventDatetime: string | Date
  *  expectedGuests: number
+ *  location?: string | null
  *  description?: string | null
  *  privateUseConfirmed: boolean
  *  privateUseConfirmedAt: string | Date | null
@@ -70,11 +71,11 @@ export async function createRequest(o, p) {
       : null
   const { rows } = await q.query(
     `INSERT INTO party_requests (
-        host_id, party_name, event_datetime, expected_guests, description, status,
+        host_id, party_name, event_datetime, expected_guests, location, description, status,
         private_use_confirmed, private_use_confirmed_at
      ) VALUES (
-        $1::uuid, $2, $3::timestamptz, $4, $5, 'pending',
-        $6::boolean, $7::timestamptz
+        $1::uuid, $2, $3::timestamptz, $4, $5, $6, 'pending',
+        $7::boolean, $8::timestamptz
      )
      RETURNING *`,
     [
@@ -82,6 +83,7 @@ export async function createRequest(o, p) {
       o.partyName,
       o.eventDatetime instanceof Date ? o.eventDatetime.toISOString() : o.eventDatetime,
       o.expectedGuests,
+      o.location?.trim() || null,
       o.description ?? null,
       o.privateUseConfirmed,
       at

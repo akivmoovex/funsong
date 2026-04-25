@@ -1,6 +1,6 @@
 import { findUserById } from '../db/repos/usersRepo.mjs'
 import { getPool } from '../db/pool.mjs'
-import { verifyPassword } from '../auth/password.mjs'
+import { hashPassword, verifyPassword } from '../auth/password.mjs'
 
 function isApiPath(req) {
   const u = String(/** @type {any} */ (req).originalUrl || /** @type {any} */ (req).url || req.path || '')
@@ -153,6 +153,31 @@ export function makeRequireSuperAdmin() {
 
 export { toPublicUser }
 
+function isValidEmail(email) {
+  const s = String(email || '').trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
+}
+
+function runSessionLogin(req, res, user, createdStatus = 200) {
+  return new Promise((resolve) => {
+    req.session.regenerate((err) => {
+      if (err) {
+        res.status(500).json({ error: 'session' })
+        return resolve()
+      }
+      req.session.userId = user.id
+      return req.session.save((saveErr) => {
+        if (saveErr) {
+          res.status(500).json({ error: 'session' })
+          return resolve()
+        }
+        res.status(createdStatus).json({ user: toPublicUser(user) })
+        return resolve()
+      })
+    })
+  })
+}
+
 /**
  * @param {import('express').Request} req
  * @param {import('express').Response} res
@@ -185,23 +210,76 @@ export function makePostLoginHandler(a) {
       if (!ok) {
         return res.status(401).json({ error: 'invalid_credentials' })
       }
-      return new Promise((resolve) => {
-        req.session.regenerate((err) => {
-          if (err) {
-            res.status(500).json({ error: 'session' })
-            return resolve()
-          }
-          req.session.userId = u.id
-          return req.session.save((saveErr) => {
-            if (saveErr) {
-              res.status(500).json({ error: 'session' })
-              return resolve()
-            }
-            res.json({ user: toPublicUser(u) })
-            return resolve()
-          })
-        })
-      })
+      return runSessionLogin(req, res, u)
+    } catch (e) {
+      console.error(e)
+      return res.status(500).json({ error: 'server' })
+    }
+  }
+}
+
+/**
+ * @param {{
+ *   getPool: typeof getPool
+ *   findUserByEmail: (e: string, p: any) => Promise<any>
+ *   createUser: (o: { email: string, passwordHash: string, displayName: string, role: 'host' }, p: any) => Promise<any>
+ * }} a
+ */
+export function makePostSignupHandler(a) {
+  return async function postSignupHandler(req, res) {
+    try {
+      const pool = a.getPool()
+      if (!pool) {
+        return res.status(503).json({ error: 'no_database' })
+      }
+      const b = /** @type {{
+       *  email?: string
+       *  password?: string
+       *  confirmPassword?: string
+       *  confirm_password?: string
+       *  displayName?: string
+       *  display_name?: string
+       *  name?: string
+       * }} */ (req.body) || {}
+      const displayName = String(b.displayName ?? b.display_name ?? b.name ?? '').trim()
+      const email = String(b.email ?? '').trim()
+      const password = String(b.password ?? '')
+      const confirmPassword = String(b.confirmPassword ?? b.confirm_password ?? '')
+      if (!displayName) {
+        return res.status(400).json({ error: 'name_required' })
+      }
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'email_invalid' })
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'password_too_short' })
+      }
+      if (password !== confirmPassword) {
+        return res.status(400).json({ error: 'password_mismatch' })
+      }
+      const exists = await a.findUserByEmail(email, pool)
+      if (exists) {
+        return res.status(409).json({ error: 'email_taken' })
+      }
+      const passwordHash = hashPassword(password)
+      let created
+      try {
+        created = await a.createUser(
+          {
+            email,
+            passwordHash,
+            displayName,
+            role: 'host'
+          },
+          pool
+        )
+      } catch (e) {
+        if (/** @type {any} */ (e)?.code === '23505') {
+          return res.status(409).json({ error: 'email_taken' })
+        }
+        throw e
+      }
+      return runSessionLogin(req, res, created, 201)
     } catch (e) {
       console.error(e)
       return res.status(500).json({ error: 'server' })

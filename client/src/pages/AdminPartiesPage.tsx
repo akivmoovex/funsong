@@ -45,13 +45,12 @@ export function AdminPartiesPage() {
         <div>
           <h2 className="text-2xl font-black text-white">Parties</h2>
           <p className="mt-1 text-sm text-white/70">
-            All approved party sessions, including <span className="font-bold">ended</span> and{' '}
-            <span className="font-bold">disabled</span> (newest first).
+            Monitor active and approved host parties (plus ended/disabled history), newest first.
           </p>
         </div>
         <div className="flex gap-3 text-sm">
           <Link to="/admin/party-requests" className="font-bold text-amber-200 hover:text-amber-100">
-            Pending requests
+            Legacy review queue
           </Link>
           <Link to="/admin" className="font-bold text-amber-200 hover:text-amber-100">
             Admin home

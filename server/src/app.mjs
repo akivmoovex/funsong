@@ -3,12 +3,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getDbConfigSummary, getPool } from './db/pool.mjs'
 import { makeDbHealthHandler } from './db/health.mjs'
-import { findUserByEmail } from './db/repos/usersRepo.mjs'
+import { createUser, findUserByEmail } from './db/repos/usersRepo.mjs'
 import { buildSession } from './middleware/buildSession.mjs'
 import { joinRateLimit, loginRateLimit, partyGuestRequestRateLimit } from './middleware/rateLimit.mjs'
 import {
   makeGetMeHandler,
   makePostLoginHandler,
+  makePostSignupHandler,
   makePostLogoutHandler,
   makeRequireAuth,
   makeRequireHost,
@@ -99,11 +100,14 @@ export function createApp(options = {}) {
   app.use('/api/join', guestJoinApi)
   app.use('/api/party', partyGuestApi)
   const postLogin = makePostLoginHandler({ getPool: getPoolInj, findUserByEmail })
+  const postSignup = makePostSignupHandler({ getPool: getPoolInj, findUserByEmail, createUser })
   const postLogout = makePostLogoutHandler()
   app.post('/api/auth/login', loginRateLimit, postLogin)
+  app.post('/api/auth/signup', loginRateLimit, postSignup)
   app.post('/api/auth/logout', postLogout)
   // Same-origin POST aliases (optional; PWA in production may use /api only)
   app.post('/login', loginRateLimit, postLogin)
+  app.post('/signup', loginRateLimit, postSignup)
   app.post('/logout', postLogout)
   app.get(
     '/api/protected/health-host',

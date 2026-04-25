@@ -9,6 +9,7 @@ import { appendEvent } from './src/db/repos/partyEventsRepo.mjs'
 import { emitAdminPartyDisabled } from './src/services/partyRealtime.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))
@@ -96,7 +97,7 @@ beforeEach(() => {
 })
 
 describe('admin party monitor API', () => {
-  it('GET /api/admin/parties returns live parties for super admin', async () => {
+  it('GET /api/admin/parties returns approved parties for super admin monitoring', async () => {
     partySessionsRepo.listSessionsForAdmin.mockResolvedValue([sampleListRow()])
     const app = makeApp()
     const agent = request.agent(app)
@@ -108,6 +109,7 @@ describe('admin party monitor API', () => {
     expect(p.partyName).toBe('Big bash')
     expect(p.connectedGuestCount).toBe(3)
     expect(p.maxGuests).toBe(25)
+    expect(p.requestStatus).toBe('approved')
     expect(p.activeSong?.title).toBe('Karaoke Hit')
     expect(p.currentController?.displayName).toBe('Alex')
   })

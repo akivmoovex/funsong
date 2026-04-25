@@ -8,6 +8,7 @@ import * as prRepo from './src/db/repos/partyRequestsRepo.mjs'
 import * as approval from './src/services/partyRequestApproval.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

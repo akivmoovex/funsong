@@ -1,10 +1,12 @@
 import { Router } from 'express'
 import {
   createRequest,
+  findRequestById,
   findRequestByIdForHost,
   listRequestsByHostId
 } from '../db/repos/partyRequestsRepo.mjs'
 import { findSessionByPartyRequestId } from '../db/repos/partySessionsRepo.mjs'
+import { approvePartyRequest } from '../services/partyRequestApproval.mjs'
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -40,6 +42,7 @@ function makeMapRequest(d) {
       partyName: row.party_name,
       eventDatetime: row.event_datetime,
       expectedGuests: row.expected_guests,
+      location: row.location,
       description: row.description,
       privateUseConfirmed: row.private_use_confirmed === true,
       privateUseConfirmedAt: row.private_use_confirmed_at,
@@ -138,8 +141,7 @@ async function postCreateInternal(req, res, next, d, mapRequestRow) {
     const b = /** @type {Record<string, unknown>} */ (req.body) || {}
     const partyName = String(b.partyName ?? b.party_name ?? '').trim()
     const eventRaw = b.eventDatetime ?? b.event_datetime
-    const expectedRaw = b.expectedGuests ?? b.expected_guests
-    const description = b.description != null ? String(b.description) : null
+    const location = String(b.location ?? '').trim()
     if (!partyName) {
       return res.status(400).json({ error: 'party_name_required' })
     }
@@ -152,28 +154,33 @@ async function postCreateInternal(req, res, next, d, mapRequestRow) {
     if (Number.isNaN(eventDatetime.getTime())) {
       return res.status(400).json({ error: 'event_datetime_invalid' })
     }
-    const expectedGuests = Number(expectedRaw)
-    if (!Number.isFinite(expectedGuests) || expectedGuests < 1 || expectedGuests > 2000) {
-      return res.status(400).json({ error: 'expected_guests_invalid' })
+    if (!location) {
+      return res.status(400).json({ error: 'location_required' })
     }
     const puc = b.privateUseConfirmed ?? b.private_use_confirmed
     if (puc !== true && puc !== 'true' && puc !== 1) {
       return res.status(400).json({ error: 'private_use_confirmation_required' })
     }
     const confirmedAt = new Date()
-    const row = await createRequest(
+    const created = await createRequest(
       {
         hostId: u.id,
         partyName,
         eventDatetime,
-        expectedGuests,
-        description: description?.trim() || null,
+        expectedGuests: 30,
+        location,
+        description: null,
         privateUseConfirmed: true,
         privateUseConfirmedAt: confirmedAt
       },
       pool
     )
-    const body = await mapRequestRow(req, row)
+    const approved = await approvePartyRequest(pool, String(created.id), u.id)
+    if (!approved.ok) {
+      return res.status(409).json({ error: approved.error })
+    }
+    const row = await findRequestById(String(created.id), pool)
+    const body = await mapRequestRow(req, row || created)
     return res.status(201).json({ partyRequest: body })
   } catch (e) {
     return next(e)

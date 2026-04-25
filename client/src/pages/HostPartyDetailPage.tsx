@@ -290,8 +290,7 @@ export function HostPartyDetailPage() {
       ) : null}
       {row.status === 'pending' && (
         <p className="text-sm text-white/70">
-          This request is pending review. A join link and guest QR are not
-          available yet.
+          This party is still being prepared. Join link and guest QR are not available yet.
         </p>
       )}
       {row.status === 'rejected' && !row.rejectionReason && (

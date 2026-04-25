@@ -97,6 +97,12 @@ export function LoginPage() {
           {busy ? 'Logging in…' : 'Log in'}
         </button>
       </form>
+      <p className="text-sm text-white/70">
+        New host?{' '}
+        <Link to="/signup" className="font-bold text-fuchsia-200 hover:text-fuchsia-100">
+          Sign up
+        </Link>
+      </p>
       <p className="text-center text-xs text-white/50">
         Session cookie is HTTP-only and SameSite=Lax. For stricter cross-site
         forms, add a server-issued CSRF token later.

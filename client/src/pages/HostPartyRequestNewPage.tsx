@@ -5,8 +5,7 @@ export function HostPartyRequestNewPage() {
   const nav = useNavigate()
   const [partyName, setPartyName] = useState('')
   const [eventDatetime, setEventDatetime] = useState('')
-  const [expectedGuests, setExpectedGuests] = useState('30')
-  const [description, setDescription] = useState('')
+  const [location, setLocation] = useState('')
   const [privateUseOk, setPrivateUseOk] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -23,8 +22,7 @@ export function HostPartyRequestNewPage() {
         body: JSON.stringify({
           partyName: partyName.trim(),
           eventDatetime: new Date(eventDatetime).toISOString(),
-          expectedGuests: Number(expectedGuests),
-          description: description.trim() || null,
+          location: location.trim(),
           privateUseConfirmed: true
         })
       })
@@ -48,7 +46,7 @@ export function HostPartyRequestNewPage() {
   return (
     <div className="fs-card max-w-lg space-y-4 text-left">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-2xl font-black">Request a party</h2>
+        <h2 className="text-2xl font-black">Create a party</h2>
         <Link
           to="/host/dashboard"
           className="text-sm font-bold text-fuchsia-300 hover:text-fuchsia-200"
@@ -57,13 +55,12 @@ export function HostPartyRequestNewPage() {
         </Link>
       </div>
       <p className="text-sm text-white/80">
-        Submit the details below. An admin will review your request. You will
-        not be able to share a join link until it is approved.
+        Fill in the details below and generate your join QR instantly.
       </p>
       <p className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-50/95">
-        FunSong is for <strong>private</strong> gatherings. You confirm the party is not a public
-        or commercial event. You are responsible for how audio and lyrics are used with your
-        guests; FunSong does not grant public performance or streaming rights.
+        I confirm this is a private friends and family event only with less than 30 guests.
+        No commercial use or recording will be allowed. I understand that FunSong is a tool
+        to help connect people via music. FunSong does not claim ownership of original songs.
       </p>
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
@@ -93,27 +90,15 @@ export function HostPartyRequestNewPage() {
         </div>
         <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-white/60">
-            Expected guests
+            Location
           </label>
           <input
             required
-            type="number"
-            min={1}
-            max={2000}
             className="w-full rounded-2xl border-2 border-white/20 bg-white/10 px-4 py-3 text-sm text-white outline-none ring-0"
-            value={expectedGuests}
-            onChange={(e) => setExpectedGuests(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-white/60">
-            Description
-          </label>
-          <textarea
-            className="min-h-[100px] w-full rounded-2xl border-2 border-white/20 bg-white/10 px-4 py-3 text-sm text-white outline-none ring-0 placeholder:text-white/40"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Theme, location notes, or anything the admin should know"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g. Tel Aviv, home living room"
+            autoComplete="off"
           />
         </div>
         <div className="flex gap-2 rounded-2xl border border-white/15 bg-white/5 p-3">
@@ -125,8 +110,9 @@ export function HostPartyRequestNewPage() {
             className="mt-0.5 h-4 w-4 shrink-0"
           />
           <label htmlFor="fs-private-use-confirm" className="text-sm text-white/90">
-            I confirm this is a private friends/family event and I understand FunSong does not
-            claim ownership of original songs.
+            I confirm this is a private friends and family event only with less than 30 guests.
+            No commercial use or recording will be allowed. I understand that FunSong is a tool
+            to help connect people via music. FunSong does not claim ownership of original songs.
           </label>
         </div>
         {error && (
@@ -139,7 +125,7 @@ export function HostPartyRequestNewPage() {
           disabled={busy || !privateUseOk}
           className="w-full rounded-2xl bg-fuchsia-500 py-3 text-sm font-black text-white shadow-lg shadow-fuchsia-500/30 hover:bg-fuchsia-400 disabled:opacity-60"
         >
-          {busy ? 'Submitting…' : 'Submit request'}
+          {busy ? 'Creating…' : 'Create Party and Generate QR'}
         </button>
       </form>
     </div>

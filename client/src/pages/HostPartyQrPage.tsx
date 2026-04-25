@@ -27,7 +27,9 @@ export function HostPartyQrPage() {
           className="h-64 w-64 object-contain"
         />
       </div>
-      <p className="text-xs text-white/50">If the code does not show, the party may not be approved yet.</p>
+      <p className="text-xs text-white/50">
+        If the code does not show, the party may still be preparing. Refresh in a moment.
+      </p>
       <Link
         to={`/host/parties/${partyId}`}
         className="inline-block font-bold text-fuchsia-300 hover:text-fuchsia-200"

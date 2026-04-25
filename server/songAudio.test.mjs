@@ -19,6 +19,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

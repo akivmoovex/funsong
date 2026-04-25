@@ -8,6 +8,7 @@ import { createApp } from './src/app.mjs'
 import { pickLineTextForLanguage, buildPartyKaraokeState } from './src/services/partyKaraokeState.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

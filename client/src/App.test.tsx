@@ -55,4 +55,44 @@ describe('App', () => {
     })
     expect(screen.getByText(/Host a party/i)).toBeInTheDocument()
   })
+
+  it('loads admin dashboard with monitoring-first actions', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              user: {
+                id: '1',
+                email: 'admin@example.com',
+                displayName: 'Admin',
+                role: 'super_admin',
+                isActive: true
+              }
+            })
+        }) as unknown as Promise<Response>
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      }) as unknown as Promise<Response>
+    }) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin']}
+      >
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Admin dashboard/i })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('link', { name: /Open party monitor/i })).toBeInTheDocument()
+  })
 })

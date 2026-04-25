@@ -12,6 +12,7 @@ import * as controlRepo from './src/db/repos/controlRequestsRepo.mjs'
 import * as partyGuestsRepo from './src/db/repos/partyGuestsRepo.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

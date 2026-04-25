@@ -19,6 +19,7 @@ import { JoinPage } from './pages/JoinPage'
 import { PartyGuestPlaylistPage } from './pages/PartyGuestPlaylistPage'
 import { PartyLobbyPage } from './pages/PartyLobbyPage'
 import { LoginPage } from './pages/LoginPage'
+import { SignupPage } from './pages/SignupPage'
 import { PublicContentNotFoundPage } from './pages/PublicContentNotFoundPage'
 
 export function App() {
@@ -56,6 +57,7 @@ export function App() {
         <Route path="/lyrics/*" element={<PublicContentNotFoundPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         <Route
           path="/host/dashboard"
           element={

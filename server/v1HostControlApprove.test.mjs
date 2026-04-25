@@ -9,6 +9,7 @@ import * as crRepo from './src/db/repos/controlRequestsRepo.mjs'
 import { createApp } from './src/app.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

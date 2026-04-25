@@ -8,6 +8,7 @@ import * as songsRepo from './src/db/repos/songsRepo.mjs'
 import * as lyricLinesRepo from './src/db/repos/lyricLinesRepo.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))

@@ -63,6 +63,31 @@ describe('guest join API', () => {
     expect(hasFs).toBe(true)
   })
 
+  it('guest can join newly created auto-approved party code', async () => {
+    getJoinPreview.mockResolvedValue({
+      found: true,
+      canJoin: true,
+      full: false,
+      reason: null,
+      status: 'approved',
+      partyTitle: 'New Party',
+      currentGuests: 0,
+      maxGuests: 30
+    })
+    performGuestJoin.mockResolvedValue({
+      ok: true,
+      session: { id: 's2' },
+      guest: { id: 'g2', display_name: 'Rina' }
+    })
+    const app = makeApp()
+    const r = await request(app)
+      .post('/api/join/NOW-QR-01')
+      .send({ displayName: 'Rina', language: 'english' })
+    expect(r.status).toBe(201)
+    expect(r.body.redirect).toBe('/party/NOW-QR-01')
+    expect(r.body.guest?.displayName).toBe('Rina')
+  })
+
   it('cannot join disabled party (403)', async () => {
     performGuestJoin.mockResolvedValue({ ok: false, error: 'not_joinable' })
     const app = makeApp()

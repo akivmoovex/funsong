@@ -92,7 +92,7 @@ export function AdminPartyRequestsPage() {
   return (
     <div className="space-y-4 text-left">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-2xl font-black text-white">Pending party requests</h2>
+        <h2 className="text-2xl font-black text-white">Legacy manual party review</h2>
         <Link
           to="/admin"
           className="text-sm font-bold text-amber-200 hover:text-amber-100"
@@ -100,13 +100,16 @@ export function AdminPartyRequestsPage() {
           Admin home
         </Link>
       </div>
+      <p className="text-sm text-white/80">
+        New host-created parties are auto-approved. Use this page only for legacy/manual review cases.
+      </p>
       {err && (
         <p className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
           {err}
         </p>
       )}
       {rows && rows.length === 0 && !err && (
-        <p className="text-sm text-white/80">No pending requests.</p>
+        <p className="text-sm text-white/80">No legacy pending requests.</p>
       )}
       {rows && rows.length > 0 && (
         <ul className="space-y-3">

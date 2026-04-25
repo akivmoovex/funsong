@@ -5,17 +5,19 @@ import session from 'express-session'
 import { findUserByEmail, findUserById } from './src/db/repos/usersRepo.mjs'
 import * as partyRequestsRepo from './src/db/repos/partyRequestsRepo.mjs'
 import * as partySessionsRepo from './src/db/repos/partySessionsRepo.mjs'
+import * as partyRequestApproval from './src/services/partyRequestApproval.mjs'
 import { createApp } from './src/app.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
+  createUser: vi.fn(),
   findUserByEmail: vi.fn(),
   findUserById: vi.fn()
 }))
 
 vi.mock('./src/db/repos/partyRequestsRepo.mjs', () => ({
   createRequest: vi.fn(),
-  listRequestsByHostId: vi.fn(),
   findRequestById: vi.fn(),
+  listRequestsByHostId: vi.fn(),
   findRequestByIdForHost: vi.fn(),
   listPendingRequestsForAdmin: vi.fn()
 }))
@@ -26,8 +28,14 @@ vi.mock('./src/db/repos/partySessionsRepo.mjs', () => ({
   createSession: vi.fn()
 }))
 
-const { createRequest, listRequestsByHostId, findRequestByIdForHost } = partyRequestsRepo
+vi.mock('./src/services/partyRequestApproval.mjs', () => ({
+  approvePartyRequest: vi.fn(),
+  rejectPartyRequest: vi.fn()
+}))
+
+const { createRequest, findRequestById, listRequestsByHostId, findRequestByIdForHost } = partyRequestsRepo
 const { findSessionByPartyRequestId } = partySessionsRepo
+const { approvePartyRequest } = partyRequestApproval
 
 const hostUidA = '8c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0d'
 const hostUidB = '2c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0e'
@@ -73,8 +81,17 @@ beforeEach(() => {
     reviewed_by: null,
     reviewed_at: null,
     created_at: new Date('2030-01-01T00:00:00.000Z'),
-    updated_at: new Date('2030-01-01T00:00:00.000Z')
+    updated_at: new Date('2030-01-01T00:00:00.000Z'),
+    location: 'Indoor'
   }
+  approvePartyRequest.mockResolvedValue({
+    ok: true,
+    session: {
+      id: 'ssssssss-ssss-4sss-8sss-ssssssssssss',
+      party_code: 'AUTO-CODE1',
+      max_guests: 30
+    }
+  })
 })
 
 async function loginHost(agent, uid, email) {
@@ -87,14 +104,26 @@ async function loginHost(agent, uid, email) {
 }
 
 describe('host party requests API', () => {
-  it('host can create a pending request', async () => {
+  it('host creates a party that is approved immediately', async () => {
     createRequest.mockImplementation(async (o) => {
       expect(o.hostId).toBe(hostUidA)
       expect(o.partyName).toBe('My bash')
-      expect(o.expectedGuests).toBe(25)
-      return { ...partyRowPending, party_name: o.partyName, expected_guests: o.expectedGuests }
+      expect(o.expectedGuests).toBe(30)
+      expect(o.location).toBe('Rooftop')
+      return { ...partyRowPending, party_name: o.partyName, expected_guests: o.expectedGuests, location: o.location }
     })
-    findSessionByPartyRequestId.mockResolvedValue(null)
+    findRequestById.mockResolvedValue({
+      ...partyRowPending,
+      status: 'approved',
+      party_name: 'My bash',
+      expected_guests: 30,
+      location: 'Rooftop'
+    })
+    findSessionByPartyRequestId.mockResolvedValue({
+      join_code: 'AUTO-CODE1',
+      party_code: 'AUTO-CODE1',
+      status: 'approved'
+    })
 
     const app = makeApp()
     const agent = request.agent(app)
@@ -102,16 +131,15 @@ describe('host party requests API', () => {
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'My bash',
       eventDatetime: '2030-07-15T12:00:00.000Z',
-      expectedGuests: 25,
-      description: 'indoor',
+      location: 'Rooftop',
       privateUseConfirmed: true
     })
     expect(r.status).toBe(201)
     expect(r.body.partyRequest).toBeDefined()
-    expect(r.body.partyRequest.status).toBe('pending')
-    expect(r.body.partyRequest.canShowJoinLink).toBe(false)
-    expect(r.body.partyRequest.joinUrl).toBeNull()
-    expect(r.body.partyRequest.joinPath).toBeNull()
+    expect(r.body.partyRequest.status).toBe('approved')
+    expect(r.body.partyRequest.canShowJoinLink).toBe(true)
+    expect(r.body.partyRequest.joinPath).toBe('/join/AUTO-CODE1')
+    expect(approvePartyRequest).toHaveBeenCalledWith(expect.anything(), prIdA, hostUidA)
   })
 
   it('rejects create without private use confirmation (400)', async () => {
@@ -121,7 +149,7 @@ describe('host party requests API', () => {
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'X',
       eventDatetime: '2030-07-15T12:00:00.000Z',
-      expectedGuests: 10,
+      location: 'Home',
       privateUseConfirmed: false
     })
     expect(r.status).toBe(400)
@@ -133,9 +161,49 @@ describe('host party requests API', () => {
     const app = makeApp()
     const r = await request(app)
       .post('/api/host/parties/request')
-      .send({ partyName: 'x', eventDatetime: '2030-01-01T00:00:00.000Z', expectedGuests: 10 })
+      .send({ partyName: 'x', eventDatetime: '2030-01-01T00:00:00.000Z', location: 'Home' })
     expect(r.status).toBe(401)
     expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('rejects create without required location (400)', async () => {
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.post('/api/host/parties/request').send({
+      partyName: 'No location',
+      eventDatetime: '2030-07-15T12:00:00.000Z',
+      privateUseConfirmed: true
+    })
+    expect(r.status).toBe(400)
+    expect(r.body.error).toBe('location_required')
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('rejects create without party name (400)', async () => {
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.post('/api/host/parties/request').send({
+      eventDatetime: '2030-07-15T12:00:00.000Z',
+      location: 'Home',
+      privateUseConfirmed: true
+    })
+    expect(r.status).toBe(400)
+    expect(r.body.error).toBe('party_name_required')
+  })
+
+  it('rejects create without event datetime (400)', async () => {
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.post('/api/host/parties/request').send({
+      partyName: 'No date',
+      location: 'Home',
+      privateUseConfirmed: true
+    })
+    expect(r.status).toBe(400)
+    expect(r.body.error).toBe('event_datetime_required')
   })
 
   it('host cannot load another host party request', async () => {
@@ -179,6 +247,46 @@ describe('host party requests API', () => {
     expect(r.body.partyRequest?.canShowJoinLink).toBe(true)
     expect(r.body.partyRequest?.canShowQr).toBe(true)
     expect(r.body.partyRequest?.joinPath).toBe('/join/ABC-123')
+  })
+
+  it('newly created party has QR/join payload immediately', async () => {
+    createRequest.mockResolvedValue({
+      ...partyRowPending,
+      status: 'pending',
+      party_name: 'QR now',
+      expected_guests: 30,
+      location: 'Lounge'
+    })
+    findRequestById.mockResolvedValue({
+      ...partyRowPending,
+      status: 'approved',
+      party_name: 'QR now',
+      expected_guests: 30,
+      location: 'Lounge'
+    })
+    findSessionByPartyRequestId.mockResolvedValue({
+      id: 'sess-1',
+      join_code: 'NOW-QR-01',
+      party_code: 'NOW-QR-01',
+      status: 'approved'
+    })
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const created = await agent.post('/api/host/parties/request').send({
+      partyName: 'QR now',
+      eventDatetime: '2030-07-15T12:00:00.000Z',
+      location: 'Lounge',
+      privateUseConfirmed: true
+    })
+    expect(created.status).toBe(201)
+    const id = created.body.partyRequest?.id
+    const qr = await agent
+      .get(`/api/host/parties/${id}/qr`)
+      .query({ format: 'json' })
+      .set('Host', 'example.com')
+    expect(qr.status).toBe(200)
+    expect(qr.body.joinPath).toBe('/join/NOW-QR-01')
   })
 
   it('second host only sees their own list scope via repo (smoke: list is called with own id)', async () => {

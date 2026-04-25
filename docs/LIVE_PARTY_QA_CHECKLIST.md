@@ -38,9 +38,26 @@ Legend:
 | 28 | Host/admin can start another song | Next song starts cleanly |  |  |
 | 29 | Portrait mode works | Karaoke layout displays correctly in portrait |  |  |
 | 30 | Landscape mode shows unsupported message | Rotate-to-portrait message appears |  |  |
+| 31 | New host signs up from `/signup` | Host account is created and redirected to dashboard |  |  |
+| 32 | Duplicate signup email is blocked | Error shown and account not created |  |  |
+| 33 | New host logs in from `/login` | Login succeeds and host dashboard loads |  |  |
+| 34 | Host creates party with name/date/location/consent | Party is created successfully |  |  |
+| 35 | Host tries to create party without consent | Create is blocked with validation error |  |  |
+| 36 | Host tries to create party without location | Create is blocked with validation error |  |  |
+| 37 | Newly created party status | Party is immediately `approved` (no normal admin approval wait) |  |  |
+| 38 | Newly created party QR availability | Join link and QR appear immediately on host detail/QR pages |  |  |
+| 39 | Guest joins newly created party via QR/link | Guest enters lobby successfully |  |  |
+| 40 | Admin monitor shows newly created party | Party appears in admin parties list/details |  |  |
+| 41 | Admin disables party | Party status becomes `disabled` |  |  |
+| 42 | Guest join after disable | Join is blocked with not-joinable response |  |  |
+| 43 | Existing super admin login | Super admin login still works on `/api/auth/login` |  |  |
+| 44 | Host access to admin route/API | Host is denied super-admin routes/APIs |  |  |
+| 45 | Existing song/playlist/karaoke flow | Core live-party playlist + karaoke flow still works |  |  |
 
 ## Quick Regression Notes
 
 - Verify control requests and song requests remain separated in host panels.
 - Verify taking back control does not reject/erase pending song requests.
 - Verify a pending song request does not block a guest from requesting control.
+- Verify new host party creation does not require manual admin approval.
+- Verify admin legacy review queue is optional/manual, not required for normal host parties.
