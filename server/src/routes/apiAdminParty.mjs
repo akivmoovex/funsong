@@ -7,7 +7,7 @@ import {
   listSessionsForAdmin
 } from '../db/repos/partySessionsRepo.mjs'
 import { appendEvent } from '../db/repos/partyEventsRepo.mjs'
-import { emitAdminPartyDisabled } from '../services/partyRealtime.mjs'
+import { emitAdminPartyDisabled, emitHostPartyEnded } from '../services/partyRealtime.mjs'
 import { approvePartyRequest, rejectPartyRequest } from '../services/partyRequestApproval.mjs'
 
 const UUID =
@@ -106,6 +106,31 @@ export function createAdminPartyRequestsRouter(d) {
           return res.status(409).json({ error: out.error })
         }
         return res.status(404).json({ error: out.error })
+      }
+      const hostId = String(/** @type {any} */ (out.session).host_id || '')
+      if (out.closedSessionIds?.length && hostId) {
+        for (const sessionId of out.closedSessionIds) {
+          try {
+            await appendEvent(
+              {
+                sessionId,
+                eventType: 'party_ended',
+                payload: {
+                  source: 'host',
+                  reason: 'superseded_by_new_party',
+                  hostUserId: hostId
+                }
+              },
+              pool
+            )
+          } catch {
+            // ignore log failure
+          }
+        }
+        const io = /** @type {import('socket.io').Server | undefined} */ (req.app.get('io'))
+        for (const sessionId of out.closedSessionIds) {
+          await emitHostPartyEnded(io, d.getPool, sessionId)
+        }
       }
       return res.status(201).json({
         session: {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
 import { StatusPill } from '../components/ui/StatusPill'
 import { createPartySocket } from '../realtime/partySocket'
 
@@ -79,6 +80,7 @@ export function PartyGuestPlaylistPage() {
   const [availableErr, setAvailableErr] = useState<string | null>(null)
   const [previewBusySongId, setPreviewBusySongId] = useState<string | null>(null)
   const [preview, setPreview] = useState<SongPreview | null>(null)
+  const { runBusy } = useDelayedBusy()
 
   const load = useCallback(async () => {
     if (!partyCode || !PC.test(partyCode)) return
@@ -272,23 +274,28 @@ export function PartyGuestPlaylistPage() {
 
   async function leaveParty() {
     if (!partyCode) return
-    setLeaveBusy(true)
-    setLeaveErr(null)
-    try {
-      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/leave`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        setLeaveErr('Could not leave the party. Please try again.')
-        return
-      }
-      nav('/', { replace: true })
-    } catch {
-      setLeaveErr('Network error while leaving.')
-    } finally {
-      setLeaveBusy(false)
-    }
+    await runBusy(
+      async () => {
+        setLeaveBusy(true)
+        setLeaveErr(null)
+        try {
+          const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/leave`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            setLeaveErr('Could not leave the party. Please try again.')
+            return
+          }
+          nav('/', { replace: true })
+        } catch {
+          setLeaveErr('Network error while leaving.')
+        } finally {
+          setLeaveBusy(false)
+        }
+      },
+      { message: 'Leaving the party…' }
+    )
   }
 
   if (!partyCode || !PC.test(partyCode)) {

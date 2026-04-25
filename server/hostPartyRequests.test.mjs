@@ -96,7 +96,8 @@ beforeEach(() => {
       id: 'ssssssss-ssss-4sss-8sss-ssssssssssss',
       party_code: 'AUTO-CODE1',
       max_guests: 30
-    }
+    },
+    closedSessionIds: []
   })
   getIntSetting.mockResolvedValue(30)
 })
@@ -112,11 +113,15 @@ async function loginHost(agent, uid, email) {
 
 describe('host party requests API', () => {
   it('host creates a party that is approved immediately', async () => {
+    const before = Date.now()
     createRequest.mockImplementation(async (o) => {
       expect(o.hostId).toBe(hostUidA)
       expect(o.partyName).toBe('My bash')
       expect(o.expectedGuests).toBe(30)
       expect(o.location).toBe('Rooftop')
+      expect(o.eventDatetime).toBeInstanceOf(Date)
+      expect(o.eventDatetime.getTime()).toBeGreaterThanOrEqual(before - 2_000)
+      expect(o.eventDatetime.getTime()).toBeLessThanOrEqual(Date.now() + 2_000)
       return { ...partyRowPending, party_name: o.partyName, expected_guests: o.expectedGuests, location: o.location }
     })
     findRequestById.mockResolvedValue({
@@ -137,7 +142,6 @@ describe('host party requests API', () => {
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'My bash',
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       location: 'Rooftop',
       privateUseConfirmed: true
     })
@@ -170,7 +174,6 @@ describe('host party requests API', () => {
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'Settings cap party',
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       location: 'Rooftop',
       privateUseConfirmed: true
     })
@@ -184,7 +187,6 @@ describe('host party requests API', () => {
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'X',
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       location: 'Home',
       privateUseConfirmed: false
     })
@@ -197,7 +199,7 @@ describe('host party requests API', () => {
     const app = makeApp()
     const r = await request(app)
       .post('/api/host/parties/request')
-      .send({ partyName: 'x', eventDatetime: '2030-01-01T00:00:00.000Z', location: 'Home' })
+      .send({ partyName: 'x', location: 'Home' })
     expect(r.status).toBe(401)
     expect(createRequest).not.toHaveBeenCalled()
   })
@@ -208,7 +210,6 @@ describe('host party requests API', () => {
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
       partyName: 'No location',
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       privateUseConfirmed: true
     })
     expect(r.status).toBe(400)
@@ -221,7 +222,6 @@ describe('host party requests API', () => {
     const agent = request.agent(app)
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       location: 'Home',
       privateUseConfirmed: true
     })
@@ -229,17 +229,35 @@ describe('host party requests API', () => {
     expect(r.body.error).toBe('party_name_required')
   })
 
-  it('rejects create without event datetime (400)', async () => {
+  it('create succeeds without event datetime in body; uses server time', async () => {
+    const before = Date.now()
+    createRequest.mockImplementation(async (o) => {
+      expect(o.eventDatetime).toBeInstanceOf(Date)
+      expect(o.eventDatetime.getTime()).toBeGreaterThanOrEqual(before - 2_000)
+      expect(o.eventDatetime.getTime()).toBeLessThanOrEqual(Date.now() + 2_000)
+      return { ...partyRowPending, party_name: o.partyName, location: o.location }
+    })
+    findRequestById.mockResolvedValue({
+      ...partyRowPending,
+      status: 'approved',
+      party_name: 'No date in body',
+      location: 'Home'
+    })
+    findSessionByPartyRequestId.mockResolvedValue({
+      join_code: 'AUTO-CODE1',
+      party_code: 'AUTO-CODE1',
+      status: 'approved'
+    })
     const app = makeApp()
     const agent = request.agent(app)
     await loginHost(agent, hostUidA, emailA)
     const r = await agent.post('/api/host/parties/request').send({
-      partyName: 'No date',
+      partyName: 'No date in body',
       location: 'Home',
       privateUseConfirmed: true
     })
-    expect(r.status).toBe(400)
-    expect(r.body.error).toBe('event_datetime_required')
+    expect(r.status).toBe(201)
+    expect(createRequest).toHaveBeenCalled()
   })
 
   it('host cannot load another host party request', async () => {
@@ -311,7 +329,6 @@ describe('host party requests API', () => {
     await loginHost(agent, hostUidA, emailA)
     const created = await agent.post('/api/host/parties/request').send({
       partyName: 'QR now',
-      eventDatetime: '2030-07-15T12:00:00.000Z',
       location: 'Lounge',
       privateUseConfirmed: true
     })

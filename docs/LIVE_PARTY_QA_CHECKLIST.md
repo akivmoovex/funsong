@@ -41,7 +41,7 @@ Legend:
 | 31 | New host signs up from `/signup` | Host account is created and redirected to dashboard |  |  |
 | 32 | Duplicate signup email is blocked | Error shown and account not created |  |  |
 | 33 | New host logs in from `/login` | Login succeeds and host dashboard loads |  |  |
-| 34 | Host creates party with name/date/location/consent | Party is created successfully |  |  |
+| 34 | Host creates party with name/location/consent (no event date in UI) | Party is created successfully; server sets timestamps |  |  |
 | 35 | Host tries to create party without consent | Create is blocked with validation error |  |  |
 | 36 | Host tries to create party without location | Create is blocked with validation error |  |  |
 | 37 | Newly created party status | Party is immediately `approved` (no normal admin approval wait) |  |  |
@@ -143,3 +143,19 @@ Automation note: this repository currently ships an integration fallback (`npm r
 | 106 | Playlist refresh after end | If `playlist:updated` runs while party is ended, lobby shows ended state (playlist API `403 not_available`) |  |  |
 | 107 | Super admin | Existing super-admin login and guarded routes unchanged |  |  |
 | 108 | Profile / My Songs / signup | Existing account flows still work |  |  |
+
+## 53B–53H: Logout, mobile nav, busy overlay, party create, QR, join code
+
+| # | Scenario | Expected Result | Pass/Fail | Notes |
+|---|----------|-----------------|-----------|-------|
+| 109 | Host login | Login succeeds; lands on home/host dashboard as usual |  |  |
+| 110 | Host logout | Session clears; user lands on homepage; no stale host UI |  |  |
+| 111 | Mobile: top link row | `Home` / `Join` / `Host` are hidden in the main top bar; burger exposes them |  |  |
+| 112 | Mobile burger | Contains Home, Join Party, Host/Admin/Login in role order; **Logout** is last if shown |  |  |
+| 113 | Create party form | No event date/time field; single consent as checkbox label; submit blocked without consent |  |  |
+| 114 | New party | Creating a new party ends other open host parties (per server rules) |  |  |
+| 115 | Party details | No “N guests expected” (or similar) for host-created flow |  |  |
+| 116 | Host QR | Alphabet party code and scannable QR visible when code is available; no broken image when code fails to load |  |  |
+| 117 | Join by code | From home and `/join`, code submits to `/join/:code`; trim whitespace; friendly error on bad code |  |  |
+| 118 | Slow action (>1s) | Global busy overlay: dim + animated music notes; dismisses on success or failure |  |  |
+| 119 | Regression | Existing party / playlist / song / karaoke flow unchanged |  |  |

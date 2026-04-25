@@ -105,8 +105,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh])
 
   const logout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
-    setUser(null)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    } catch {
+      // Still clear local session so the UI can’t stay “logged in” if the request fails
+    } finally {
+      setUser(null)
+    }
   }, [])
 
   const value = useMemo(

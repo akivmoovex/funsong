@@ -1,6 +1,8 @@
 import { getDbPool } from './poolContext.mjs'
 import { rejectAllPendingForSession } from './controlRequestsRepo.mjs'
 
+const SUPERSEDED_REJECTION = 'Superseded by a new party for this host'
+
 export async function findSessionById(id, p) {
   const q = getDbPool(p)
   const { rows } = await q.query('SELECT * FROM party_sessions WHERE id = $1::uuid', [id])
@@ -171,6 +173,51 @@ export async function startPartySession(sessionId, p) {
     [sessionId]
   )
   return rows[0] || null
+}
+
+/**
+ * Before approving a new party: end all other open sessions for this host and reject
+ * other pending party_requests. Runs inside the same transaction as session creation.
+ * @param {import('pg').PoolClient} c
+ * @param {string} hostId
+ * @param {string} keepPartyRequestId Party request being approved (excluded from rejection).
+ * @param {string} closedByUserId User id for `reviewed_by` on superseded requests.
+ * @returns {Promise<string[]>} Session ids that were ended (for party:ended + party_events).
+ */
+export async function closeOtherOpenPartiesForHost(c, hostId, keepPartyRequestId, closedByUserId) {
+  const { rows } = await c.query(
+    `UPDATE party_sessions
+     SET status = 'ended'::party_session_status,
+         ended_at = now(),
+         playback_status = 'idle'::playback_status,
+         active_song_id = NULL,
+         active_playlist_item_id = NULL,
+         current_line_number = NULL,
+         current_controller_party_guest_id = NULL,
+         controller_audio_enabled = FALSE,
+         updated_at = now()
+     WHERE host_id = $1::uuid
+       AND status IN ('approved'::party_session_status, 'active'::party_session_status)
+     RETURNING id`,
+    [hostId]
+  )
+  const sessionIds = rows.map((row) => String(/** @type {any} */ (row).id))
+  for (const sid of sessionIds) {
+    await rejectAllPendingForSession(sid, c)
+  }
+  await c.query(
+    `UPDATE party_requests
+     SET status = 'rejected',
+         rejection_reason = $2,
+         reviewed_by = $3::uuid,
+         reviewed_at = now(),
+         updated_at = now()
+     WHERE host_id = $1::uuid
+       AND status = 'pending'
+       AND id != $4::uuid`,
+    [hostId, SUPERSEDED_REJECTION, closedByUserId, keepPartyRequestId]
+  )
+  return sessionIds
 }
 
 /**

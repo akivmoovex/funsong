@@ -1,11 +1,13 @@
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/AuthContext'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
 
 const FAILED_LOGIN_KEY = 'funsong.login.failedCount'
 
 export function LoginPage() {
   const { login, user, ready } = useAuth()
+  const { runBusy } = useDelayedBusy()
   const [search] = useSearchParams()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -36,30 +38,33 @@ export function LoginPage() {
     e.preventDefault()
     setErr(null)
     setBusy(true)
-    void login(email, password)
-      .then(() => {
-        window.sessionStorage.removeItem(FAILED_LOGIN_KEY)
-        setFailedCount(0)
-        if (search.get('next')) {
-          void navigate(String(search.get('next') || ''), { replace: true })
-        } else {
-          void navigate('/', { replace: true })
+    void runBusy(
+      async () => {
+        try {
+          await login(email, password)
+          window.sessionStorage.removeItem(FAILED_LOGIN_KEY)
+          setFailedCount(0)
+          if (search.get('next')) {
+            void navigate(String(search.get('next') || ''), { replace: true })
+          } else {
+            void navigate('/', { replace: true })
+          }
+        } catch (c) {
+          const m = typeof c === 'string' ? c : (c as { message?: string })?.message
+          const nextFailed = failedCount + 1
+          window.sessionStorage.setItem(FAILED_LOGIN_KEY, String(nextFailed))
+          setFailedCount(nextFailed)
+          if (m === 'inactive') {
+            setErr('This account is inactive. Contact a super admin.')
+          } else {
+            setErr('Check your email and password, then try again.')
+          }
+        } finally {
+          setBusy(false)
         }
-      })
-      .catch((c: { message?: string } | string) => {
-        const m = typeof c === 'string' ? c : c?.message
-        const nextFailed = failedCount + 1
-        window.sessionStorage.setItem(FAILED_LOGIN_KEY, String(nextFailed))
-        setFailedCount(nextFailed)
-        if (m === 'inactive') {
-          setErr('This account is inactive. Contact a super admin.')
-        } else {
-          setErr('Check your email and password, then try again.')
-        }
-      })
-      .finally(() => {
-        setBusy(false)
-      })
+      },
+      { message: 'Logging in…' }
+    )
   }
 
   return (

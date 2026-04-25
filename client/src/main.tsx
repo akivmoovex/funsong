@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { AuthProvider } from './AuthContext'
+import { BusyOverlayProvider } from './components/busy/BusyOverlayProvider'
 import './index.css'
 
 const el = document.getElementById('root')
@@ -16,7 +17,9 @@ createRoot(el).render(
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >
       <AuthProvider>
-        <App />
+        <BusyOverlayProvider>
+          <App />
+        </BusyOverlayProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>

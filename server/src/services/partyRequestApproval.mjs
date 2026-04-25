@@ -1,3 +1,4 @@
+import { closeOtherOpenPartiesForHost } from '../db/repos/partySessionsRepo.mjs'
 import { generateJoinToken, generateUniquePartyCode } from './partyCodes.mjs'
 import { getIntSetting } from './appSettingsService.mjs'
 
@@ -6,7 +7,7 @@ import { getIntSetting } from './appSettingsService.mjs'
  * @param {string} requestId
  * @param {string} adminUserId
  * @returns {Promise<
- *  | { ok: true; session: Record<string, unknown> }
+ *  | { ok: true; session: Record<string, unknown>; closedSessionIds: string[] }
  *  | { ok: false; error: 'not_found_or_not_pending' | 'already_approved' }
  * >}
  */
@@ -31,6 +32,12 @@ export async function approvePartyRequest(pool, requestId, adminUserId) {
       await c.query('ROLLBACK')
       return { ok: false, error: 'already_approved' }
     }
+    const closedSessionIds = await closeOtherOpenPartiesForHost(
+      c,
+      String(r.host_id),
+      String(r.id),
+      adminUserId
+    )
     const partyCode = await generateUniquePartyCode(c)
     const joinToken = generateJoinToken()
     const defaultMaxGuests = await getIntSetting('max_party_guests', 30, c)
@@ -57,7 +64,7 @@ export async function approvePartyRequest(pool, requestId, adminUserId) {
       [r.id, adminUserId]
     )
     await c.query('COMMIT')
-    return { ok: true, session }
+    return { ok: true, session, closedSessionIds }
   } catch (e) {
     try {
       await c.query('ROLLBACK')

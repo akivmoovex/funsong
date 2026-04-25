@@ -277,7 +277,6 @@ export function HostPartyDetailPage() {
         </span>
         {' · '}
         {formatWhen(row.eventDatetime)}
-        {row.expectedGuests != null ? ` · ${row.expectedGuests} guests expected` : null}
       </p>
       {row.description ? (
         <p className="whitespace-pre-wrap text-sm text-white/90">{row.description}</p>

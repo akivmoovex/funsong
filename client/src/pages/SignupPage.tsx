@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
 
 function labelForError(code: string | null) {
   if (code === 'name_required') return 'Name is required.'
@@ -13,6 +14,7 @@ function labelForError(code: string | null) {
 
 export function SignupPage() {
   const nav = useNavigate()
+  const { runBusy } = useDelayedBusy()
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,30 +26,34 @@ export function SignupPage() {
     e.preventDefault()
     setErr(null)
     setBusy(true)
-    void fetch('/signup', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        displayName,
-        email,
-        password,
-        confirmPassword
-      })
-    })
-      .then(async (r) => {
-        const d = (await r.json().catch(() => ({}))) as { error?: string }
-        if (!r.ok) {
-          throw new Error(d.error || 'signup_failed')
+    void runBusy(
+      async () => {
+        try {
+          const r = await fetch('/signup', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              displayName,
+              email,
+              password,
+              confirmPassword
+            })
+          })
+          const d = (await r.json().catch(() => ({}))) as { error?: string }
+          if (!r.ok) {
+            throw new Error(d.error || 'signup_failed')
+          }
+          nav('/host/dashboard?signup=success', { replace: true })
+        } catch (e: { message?: string } | string) {
+          const m = typeof e === 'string' ? e : e?.message || 'signup_failed'
+          setErr(m)
+        } finally {
+          setBusy(false)
         }
-        return r
-      })
-      .then(() => nav('/host/dashboard?signup=success', { replace: true }))
-      .catch((e: { message?: string } | string) => {
-        const m = typeof e === 'string' ? e : e?.message || 'signup_failed'
-        setErr(m)
-      })
-      .finally(() => setBusy(false))
+      },
+      { message: 'Creating your account…' }
+    )
   }
 
   return (

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { appendEvent } from '../db/repos/partyEventsRepo.mjs'
 import {
   createRequest,
   findRequestById,
@@ -8,6 +9,7 @@ import {
 import { findSessionByPartyRequestId } from '../db/repos/partySessionsRepo.mjs'
 import { approvePartyRequest } from '../services/partyRequestApproval.mjs'
 import { getIntSetting } from '../services/appSettingsService.mjs'
+import { emitHostPartyEnded } from '../services/partyRealtime.mjs'
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -186,20 +188,12 @@ async function postCreateInternal(req, res, next, d, mapRequestRow) {
     const u = /** @type {{ id: string }} */ (req.funsongUser)
     const b = /** @type {Record<string, unknown>} */ (req.body) || {}
     const partyName = String(b.partyName ?? b.party_name ?? '').trim()
-    const eventRaw = b.eventDatetime ?? b.event_datetime
     const location = String(b.location ?? '').trim()
     if (!partyName) {
       return res.status(400).json({ error: 'party_name_required' })
     }
-    if (eventRaw == null || eventRaw === '') {
-      return res.status(400).json({ error: 'event_datetime_required' })
-    }
-    const eventDatetime = new Date(
-      typeof eventRaw === 'string' || typeof eventRaw === 'number' ? eventRaw : String(eventRaw)
-    )
-    if (Number.isNaN(eventDatetime.getTime())) {
-      return res.status(400).json({ error: 'event_datetime_invalid' })
-    }
+    /** Event time is always set server-side (creation time). */
+    const eventDatetime = new Date()
     if (!location) {
       return res.status(400).json({ error: 'location_required' })
     }
@@ -225,6 +219,30 @@ async function postCreateInternal(req, res, next, d, mapRequestRow) {
     const approved = await approvePartyRequest(pool, String(created.id), u.id)
     if (!approved.ok) {
       return res.status(409).json({ error: approved.error })
+    }
+    if (approved.closedSessionIds?.length) {
+      for (const sessionId of approved.closedSessionIds) {
+        try {
+          await appendEvent(
+            {
+              sessionId,
+              eventType: 'party_ended',
+              payload: {
+                source: 'host',
+                reason: 'superseded_by_new_party',
+                hostUserId: u.id
+              }
+            },
+            pool
+          )
+        } catch {
+          // ignore log failure
+        }
+      }
+      const io = /** @type {import('socket.io').Server | undefined} */ (req.app.get('io'))
+      for (const sessionId of approved.closedSessionIds) {
+        await emitHostPartyEnded(io, d.getPool, sessionId)
+      }
     }
     const row = await findRequestById(String(created.id), pool)
     const body = await mapRequestRow(req, row || created)

@@ -1,46 +1,52 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useId, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
 
 export function HostPartyRequestNewPage() {
   const nav = useNavigate()
+  const { runBusy } = useDelayedBusy()
   const [partyName, setPartyName] = useState('')
-  const [eventDatetime, setEventDatetime] = useState('')
   const [location, setLocation] = useState('')
   const [privateUseOk, setPrivateUseOk] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const privateUseFieldId = useId()
 
-  async function onSubmit(e: FormEvent) {
+  function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setBusy(true)
-    try {
-      const r = await fetch('/api/host/parties/request', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          partyName: partyName.trim(),
-          eventDatetime: new Date(eventDatetime).toISOString(),
-          location: location.trim(),
-          privateUseConfirmed: true
-        })
-      })
-      const d = (await r.json().catch(() => ({}))) as { partyRequest?: { id: string }; error?: string }
-      if (!r.ok) {
-        setError(d.error || 'request_failed')
-        return
-      }
-      if (d.partyRequest?.id) {
-        nav(`/host/party-requests/${d.partyRequest.id}/waiting`)
-        return
-      }
-      setError('invalid_response')
-    } catch {
-      setError('network')
-    } finally {
-      setBusy(false)
-    }
+    void runBusy(
+      async () => {
+        try {
+          const r = await fetch('/api/host/parties/request', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              partyName: partyName.trim(),
+              location: location.trim(),
+              privateUseConfirmed: true
+            })
+          })
+          const d = (await r.json().catch(() => ({}))) as { partyRequest?: { id: string }; error?: string }
+          if (!r.ok) {
+            setError(d.error || 'request_failed')
+            return
+          }
+          if (d.partyRequest?.id) {
+            nav(`/host/party-requests/${d.partyRequest.id}/waiting`)
+            return
+          }
+          setError('invalid_response')
+        } catch {
+          setError('network')
+        } finally {
+          setBusy(false)
+        }
+      },
+      { message: 'Creating your party…' }
+    )
   }
 
   return (
@@ -56,11 +62,6 @@ export function HostPartyRequestNewPage() {
       </div>
       <p className="text-sm text-white/80">
         Fill in the details below and generate your join QR instantly.
-      </p>
-      <p className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-50/95">
-        I confirm this is a private friends and family event only with less than 30 guests.
-        No commercial use or recording will be allowed. I understand that FunSong is a tool
-        to help connect people via music. FunSong does not claim ownership of original songs.
       </p>
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
@@ -78,18 +79,6 @@ export function HostPartyRequestNewPage() {
         </div>
         <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-white/60">
-            Event date & time
-          </label>
-          <input
-            required
-            type="datetime-local"
-            className="w-full rounded-2xl border-2 border-white/20 bg-white/10 px-4 py-3 text-sm text-white outline-none ring-0"
-            value={eventDatetime}
-            onChange={(e) => setEventDatetime(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-white/60">
             Location
           </label>
           <input
@@ -103,16 +92,14 @@ export function HostPartyRequestNewPage() {
         </div>
         <div className="flex gap-2 rounded-2xl border border-white/15 bg-white/5 p-3">
           <input
-            id="fs-private-use-confirm"
+            id={privateUseFieldId}
             type="checkbox"
             checked={privateUseOk}
             onChange={(e) => setPrivateUseOk(e.target.checked)}
             className="mt-0.5 h-4 w-4 shrink-0"
           />
-          <label htmlFor="fs-private-use-confirm" className="text-sm text-white/90">
-            I confirm this is a private friends and family event only with less than 30 guests.
-            No commercial use or recording will be allowed. I understand that FunSong is a tool
-            to help connect people via music. FunSong does not claim ownership of original songs.
+          <label htmlFor={privateUseFieldId} className="text-sm text-white/90">
+            I confirm this is a private friends and family event only with less than 30 guests. No commercial use or recording will be allowed. I understand that FunSong is a tool to help connect people via music. FunSong does not claim ownership of original songs.
           </label>
         </div>
         {error && (

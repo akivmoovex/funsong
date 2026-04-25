@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
+import { ManualPartyCodeJoinForm } from '@/components/guest/ManualPartyCodeJoinForm'
 import { StatusPill } from '@/components/ui/StatusPill'
 
 const PC = /^[A-Za-z0-9._-]{4,64}$/
@@ -23,6 +25,7 @@ type Preview = {
 export function JoinPage() {
   const { partyCode } = useParams()
   const nav = useNavigate()
+  const { runBusy } = useDelayedBusy()
   const [loading, setLoading] = useState(!!partyCode)
   const [notFound, setNotFound] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -53,87 +56,111 @@ export function JoinPage() {
       return
     }
     let c = false
-    void (async () => {
-      setLoading(true)
-      try {
-        const r = await fetch(`/api/join/${encodeURIComponent(partyCode)}`, {
-          credentials: 'include'
-        })
-        if (r.status === 404) {
-          if (!c) {
-            setNotFound(true)
-            setPreview(null)
+    void runBusy(
+      async () => {
+        setLoading(true)
+        try {
+          const r = await fetch(`/api/join/${encodeURIComponent(partyCode)}`, {
+            credentials: 'include'
+          })
+          if (r.status === 404) {
+            if (!c) {
+              setNotFound(true)
+              setPreview(null)
+            }
+            return
           }
-          return
+          if (!r.ok) {
+            if (!c) setFormErr('load')
+            return
+          }
+          const b = (await r.json()) as { preview: Preview }
+          if (!c) {
+            setPreview(b.preview)
+            setNotFound(false)
+          }
+        } catch {
+          if (!c) setFormErr('network')
+        } finally {
+          if (!c) setLoading(false)
         }
-        if (!r.ok) {
-          if (!c) setFormErr('load')
-          return
-        }
-        const b = (await r.json()) as { preview: Preview }
-        if (!c) {
-          setPreview(b.preview)
-          setNotFound(false)
-        }
-      } catch {
-        if (!c) setFormErr('network')
-      } finally {
-        if (!c) setLoading(false)
-      }
-    })()
+      },
+      { message: 'Loading room…' }
+    )
     return () => {
       c = true
     }
-  }, [partyCode])
+  }, [partyCode, runBusy])
 
-  async function onSubmit(e: FormEvent) {
+  function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (!partyCode) return
     setFormErr(null)
     setSaving(true)
-    try {
-      const r = await fetch(`/api/join/${encodeURIComponent(partyCode)}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: displayName.trim(), language: lang })
-      })
-      const b = (await r.json().catch(() => ({}))) as { redirect?: string; error?: string }
-      if (r.status === 409) {
-        setFormErr('full')
-        return
-      }
-      if (r.status === 403) {
-        setFormErr('blocked')
-        return
-      }
-      if (r.status === 400 && b.error === 'invalid_language') {
-        setFormErr('lang')
-        return
-      }
-      if (!r.ok) {
-        setFormErr(b.error || 'join')
-        return
-      }
-      if (b.redirect) {
-        nav(b.redirect)
-        return
-      }
-      nav(`/party/${encodeURIComponent(partyCode)}`)
-    } catch {
-      setFormErr('network')
-    } finally {
-      setSaving(false)
-    }
+    void runBusy(
+      async () => {
+        try {
+          const r = await fetch(`/api/join/${encodeURIComponent(partyCode)}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName: displayName.trim(), language: lang })
+          })
+          const b = (await r.json().catch(() => ({}))) as { redirect?: string; error?: string }
+          if (r.status === 409) {
+            setFormErr('full')
+            return
+          }
+          if (r.status === 403) {
+            setFormErr('blocked')
+            return
+          }
+          if (r.status === 400 && b.error === 'invalid_language') {
+            setFormErr('lang')
+            return
+          }
+          if (!r.ok) {
+            setFormErr(b.error || 'join')
+            return
+          }
+          if (b.redirect) {
+            nav(b.redirect)
+            return
+          }
+          nav(`/party/${encodeURIComponent(partyCode)}`)
+        } catch {
+          setFormErr('network')
+        } finally {
+          setSaving(false)
+        }
+      },
+      { message: 'Joining the party…' }
+    )
   }
 
   if (!partyCode) {
     return (
-      <div className="fs-card space-y-4 text-left">
-        <h2 className="text-2xl font-black">Join a party</h2>
-        <p className="text-sm text-white/80">
-          Open a join link in the form <span className="font-mono">/join/…</span> from the
-          host&rsquo;s invite or scan their QR. No account needed.
+      <div className="fs-card max-w-lg space-y-4 text-left">
+        <h2 className="text-2xl font-black">Join Party</h2>
+        <p className="text-sm text-white/85">
+          <span className="font-bold text-white/95">No account needed.</span> The host can share a join
+          link, or you can get in two ways:
+        </p>
+        <ul className="list-inside list-disc space-y-2 text-sm text-white/90">
+          <li>
+            <span className="font-bold text-amber-100">Scan the QR code</span> from the
+            host&rsquo;s phone or screen (same as following a <span className="font-mono">/join/…</span> link).
+          </li>
+          <li>
+            <span className="font-bold text-cyan-100">Type the party code</span> they tell you, then
+            press Join Party.
+          </li>
+        </ul>
+        <div className="border-t border-white/10 pt-1">
+          <ManualPartyCodeJoinForm idPrefix="join" className="space-y-0" />
+        </div>
+        <p className="text-xs text-white/45">
+          Your phone may open a join link in the browser; both paths go to the same place.
         </p>
       </div>
     )

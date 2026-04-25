@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useDelayedBusy } from '@/components/busy/BusyOverlayProvider'
 import { createPartySocket } from '../realtime/partySocket'
 import { pickLineText } from '../lib/lyricText'
 import { KaraokeOneDeviceAudio } from '../components/KaraokeOneDeviceAudio'
@@ -192,6 +193,7 @@ export function HostPartyPlaylistPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [karaoke, setKaraoke] = useState<HostPartyKState | null>(null)
   const hostSocketRef = useRef<import('socket.io-client').Socket | null>(null)
+  const { runBusy } = useDelayedBusy()
 
   const loadControl = useCallback(async () => {
     if (!partyId || !UUID_RE.test(partyId)) return
@@ -379,283 +381,338 @@ export function HostPartyPlaylistPage() {
 
   async function addSong(songId: string) {
     if (!partyId) return
-    setBusy('add' + songId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${partyId}/playlist/add`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId })
-      })
-      const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
-      if (r.status === 409) {
-        if (d.error === 'queue_full') {
-          setErr('queue_full')
-        } else {
-          setErr('dup')
+    await runBusy(
+      async () => {
+        setBusy('add' + songId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/playlist/add`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ songId })
+          })
+          const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
+          if (r.status === 409) {
+            if (d.error === 'queue_full') {
+              setErr('queue_full')
+            } else {
+              setErr('dup')
+            }
+            return
+          }
+          if (r.status === 400 && d.error === 'song_not_allowed') {
+            setErr('not_allowed')
+            return
+          }
+          if (!r.ok) {
+            setErr('add')
+            return
+          }
+          void load()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
         }
-        return
-      }
-      if (r.status === 400 && d.error === 'song_not_allowed') {
-        setErr('not_allowed')
-        return
-      }
-      if (!r.ok) {
-        setErr('add')
-        return
-      }
-      void load()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+      },
+      { message: 'Adding to queue…' }
+    )
   }
 
   async function removeItem(itemId: string) {
     if (!partyId) return
-    setBusy('rm' + itemId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${partyId}/playlist/remove`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlistItemId: itemId })
-      })
-      const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
-      if (!r.ok) {
-        setErr('remove')
-        return
-      }
-      void load()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('rm' + itemId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/playlist/remove`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlistItemId: itemId })
+          })
+          const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
+          if (!r.ok) {
+            setErr('remove')
+            return
+          }
+          void load()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Removing from queue…' }
+    )
   }
 
   async function approveControl(requestId: string) {
     if (!partyId) return
-    setBusy('ap' + requestId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/control-requests/${requestId}/approve`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        setErr('control_approve')
-        return
-      }
-      void loadControl()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('ap' + requestId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/control-requests/${requestId}/approve`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            setErr('control_approve')
+            return
+          }
+          void loadControl()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Approving control request…' }
+    )
   }
 
   async function rejectControl(requestId: string) {
     if (!partyId) return
-    setBusy('rj' + requestId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/control-requests/${requestId}/reject`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        setErr('control_reject')
-        return
-      }
-      void loadControl()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('rj' + requestId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/control-requests/${requestId}/reject`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            setErr('control_reject')
+            return
+          }
+          void loadControl()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Rejecting request…' }
+    )
   }
 
   async function approveSongRequest(requestId: string) {
     if (!partyId) return
-    setBusy('sar' + requestId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/approve`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        const d = (await r.json().catch(() => ({}))) as { error?: string }
-        if (d.error === 'queue_full') {
-          setErr('queue_full')
-        } else {
-          setErr('song_request_approve')
+    await runBusy(
+      async () => {
+        setBusy('sar' + requestId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/approve`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            const d = (await r.json().catch(() => ({}))) as { error?: string }
+            if (d.error === 'queue_full') {
+              setErr('queue_full')
+            } else {
+              setErr('song_request_approve')
+            }
+            return
+          }
+          void loadSongRequests()
+          void load()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
         }
-        return
-      }
-      void loadSongRequests()
-      void load()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+      },
+      { message: 'Approving song request…' }
+    )
   }
 
   async function rejectSongRequest(requestId: string) {
     if (!partyId) return
-    setBusy('srr' + requestId)
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/reject`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        setErr('song_request_reject')
-        return
-      }
-      void loadSongRequests()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('srr' + requestId)
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/reject`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            setErr('song_request_reject')
+            return
+          }
+          void loadSongRequests()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Rejecting song request…' }
+    )
   }
 
   async function takeControl() {
     if (!partyId) return
-    setBusy('take')
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${partyId}/take-control`, {
-        method: 'POST',
-        credentials: 'include'
-      })
-      if (!r.ok) {
-        setErr('take_control')
-        return
-      }
-      void loadControl()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('take')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/take-control`, {
+            method: 'POST',
+            credentials: 'include'
+          })
+          if (!r.ok) {
+            setErr('take_control')
+            return
+          }
+          void loadControl()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Taking control…' }
+    )
   }
 
   async function setControllerAudio(enabled: boolean) {
     if (!partyId) return
-    setBusy('ca')
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/controller-audio`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      })
-      if (!r.ok) {
-        setErr('ca_toggle')
-      }
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('ca')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/controller-audio`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+          })
+          if (!r.ok) {
+            setErr('ca_toggle')
+          }
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Updating audio…' }
+    )
   }
 
   async function endParty() {
     if (!partyId) return
     if (!window.confirm('End this party for everyone?')) return
-    setBusy('endparty')
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/end-party`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      const d = (await r.json().catch(() => ({}))) as { error?: string }
-      if (!r.ok) {
-        if (d.error === 'already_closed') {
-          setErr('party_already_ended')
-        } else {
-          setErr('end_party')
+    await runBusy(
+      async () => {
+        setBusy('endparty')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/end-party`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          })
+          const d = (await r.json().catch(() => ({}))) as { error?: string }
+          if (!r.ok) {
+            if (d.error === 'already_closed') {
+              setErr('party_already_ended')
+            } else {
+              setErr('end_party')
+            }
+            return
+          }
+          nav(`/host/parties/${partyId}`, { replace: true })
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
         }
-        return
-      }
-      nav(`/host/parties/${partyId}`, { replace: true })
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+      },
+      { message: 'Ending party…' }
+    )
   }
 
   async function startParty() {
     if (!partyId) return
-    setBusy('startparty')
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-party`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
-      if (!r.ok) {
-        setErr(d.error || 'start_party')
-        return
-      }
-      if (d.state) {
-        setKaraoke((prev) => ({
-          ...(prev || {}),
-          ...d.state,
-          lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
-        }))
-      }
-      void load()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('startparty')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-party`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          })
+          const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
+          if (!r.ok) {
+            setErr(d.error || 'start_party')
+            return
+          }
+          if (d.state) {
+            setKaraoke((prev) => ({
+              ...(prev || {}),
+              ...d.state,
+              lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
+            }))
+          }
+          void load()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Starting party…' }
+    )
   }
 
   async function startSong(playlistItemId: string) {
     if (!partyId) return
-    setBusy('startsong')
-    setErr(null)
-    try {
-      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-song`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlistItemId })
-      })
-      const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
-      if (!r.ok) {
-        setErr(d.error || 'start_song')
-        return
-      }
-      if (d.state) {
-        setKaraoke((prev) => ({
-          ...(prev || {}),
-          ...d.state,
-          lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
-        }))
-      }
-      void load()
-    } catch {
-      setErr('network')
-    } finally {
-      setBusy(null)
-    }
+    await runBusy(
+      async () => {
+        setBusy('startsong')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-song`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlistItemId })
+          })
+          const d = (await r.json().catch(() => ({}))) as { error?: string; state?: HostPartyKState }
+          if (!r.ok) {
+            setErr(d.error || 'start_song')
+            return
+          }
+          if (d.state) {
+            setKaraoke((prev) => ({
+              ...(prev || {}),
+              ...d.state,
+              lyricLines: Array.isArray(d.state.lyricLines) ? d.state.lyricLines : []
+            }))
+          }
+          void load()
+        } catch {
+          setErr('network')
+        } finally {
+          setBusy(null)
+        }
+      },
+      { message: 'Starting song…' }
+    )
   }
 
   const firstStartableSong = playlist?.find((p) => String(p.itemStatus || 'pending') === 'pending') || null
@@ -676,30 +733,33 @@ export function HostPartyPlaylistPage() {
     next[j] = t
     setPlaylist(next)
     const ids = next.map((p) => p.playlistItemId)
-    void (async () => {
-      setBusy('reorder')
-      setErr(null)
-      try {
-        const r = await fetch(`/api/host/parties/${partyId}/playlist/reorder`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderedItemIds: ids })
-        })
-        const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
-        if (!r.ok) {
-          setErr('reorder')
+    void runBusy(
+      async () => {
+        setBusy('reorder')
+        setErr(null)
+        try {
+          const r = await fetch(`/api/host/parties/${partyId}/playlist/reorder`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderedItemIds: ids })
+          })
+          const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
+          if (!r.ok) {
+            setErr('reorder')
+            void load()
+            return
+          }
+          if (d.playlist) setPlaylist(d.playlist)
+        } catch {
+          setErr('network')
           void load()
-          return
+        } finally {
+          setBusy(null)
         }
-        if (d.playlist) setPlaylist(d.playlist)
-      } catch {
-        setErr('network')
-        void load()
-      } finally {
-        setBusy(null)
-      }
-    })()
+      },
+      { message: 'Saving queue order…' }
+    )
   }
 
   if (!partyId || !UUID_RE.test(partyId)) {

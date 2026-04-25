@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { AuthProvider } from './AuthContext'
+import { BusyOverlayProvider } from './components/busy/BusyOverlayProvider'
 
 beforeEach(() => {
   globalThis.fetch = vi.fn().mockImplementation(() =>
@@ -27,7 +28,9 @@ describe('App', () => {
         initialEntries={['/songs']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -45,7 +48,9 @@ describe('App', () => {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -63,7 +68,9 @@ describe('App', () => {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -111,14 +118,16 @@ describe('App', () => {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
     })
-    fireEvent.change(screen.getByLabelText(/Party code/i), {
+    fireEvent.change(screen.getByTestId('home-party-code-input'), {
       target: { value: '  JoinCode01  ' }
     })
     fireEvent.click(screen.getByRole('button', { name: /Join Party/i }))
@@ -128,6 +137,77 @@ describe('App', () => {
     })
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/join/JoinCode01',
+      expect.objectContaining({ credentials: 'include' })
+    )
+  })
+
+  it('/join (no code) shows manual entry; submitting goes to /join/:code join flow', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ user: null })
+        }) as unknown as Promise<Response>
+      }
+      if (url.includes('/api/join/ManualEntry9')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              preview: {
+                canJoin: true,
+                full: false,
+                reason: null,
+                currentGuests: 0,
+                maxGuests: 30,
+                partyTitle: 'Room M',
+                status: 'active'
+              }
+            })
+        }) as unknown as Promise<Response>
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      }) as unknown as Promise<Response>
+    }) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/join']}
+      >
+        <AuthProvider>
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Join Party/i })).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText(/Scan the QR code/i, { exact: false })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Type the party code/i, { exact: false })
+    ).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('join-party-code-input'), {
+      target: { value: '  ManualEntry9  ' }
+    })
+    fireEvent.click(
+      within(screen.getByTestId('join-manual-join-form')).getByRole('button', { name: /Join Party/i })
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/How should we call you\?/i)).toBeInTheDocument()
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/join/ManualEntry9',
       expect.objectContaining({ credentials: 'include' })
     )
   })
@@ -170,7 +250,9 @@ describe('App', () => {
         initialEntries={['/join/PartyQr88']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -210,7 +292,9 @@ describe('App', () => {
         initialEntries={['/admin']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -266,7 +350,9 @@ describe('App', () => {
         initialEntries={['/host/party-requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/waiting']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -313,7 +399,9 @@ describe('App', () => {
         initialEntries={['/host/dashboard']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -367,7 +455,9 @@ describe('App', () => {
         initialEntries={['/admin']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -421,7 +511,9 @@ describe('App', () => {
         initialEntries={['/host/dashboard']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -435,6 +527,39 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
     })
+    expect(screen.queryByText('host@example.com')).not.toBeInTheDocument()
+  })
+
+  it('signed-out mobile main menu has Home, Join Party, and Login; Logout is not shown', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: null })
+      })
+    ) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/']}
+      >
+        <AuthProvider>
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /open main menu/i }))
+    const menu = await screen.findByTestId('mobile-main-menu')
+    expect(within(menu).getByRole('link', { name: /^Home$/i })).toBeInTheDocument()
+    expect(within(menu).getByRole('link', { name: /Join Party/i })).toBeInTheDocument()
+    expect(within(menu).getByRole('link', { name: /^Login$/i })).toBeInTheDocument()
+    expect(within(menu).queryByRole('button', { name: /^Logout$/i })).not.toBeInTheDocument()
   })
 
   it('does not show authenticated burger menu when signed out', async () => {
@@ -451,7 +576,9 @@ describe('App', () => {
         initialEntries={['/']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )
@@ -460,6 +587,38 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
     })
     expect(screen.queryByRole('button', { name: /open user menu/i })).not.toBeInTheDocument()
+  })
+
+  it('desktop main navigation is present with Home, Join, Host, Admin, Login', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: null })
+      })
+    ) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/']}
+      >
+        <AuthProvider>
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Party mode:/i })).toBeInTheDocument()
+    })
+    const mainNav = screen.getByRole('navigation', { name: /main navigation/i })
+    expect(within(mainNav).getByRole('link', { name: /^Home$/i })).toBeInTheDocument()
+    expect(within(mainNav).getByRole('link', { name: /^Join$/i })).toBeInTheDocument()
+    expect(within(mainNav).getByRole('link', { name: /^Host$/i })).toBeInTheDocument()
+    expect(within(mainNav).getByRole('link', { name: /^Admin$/i })).toBeInTheDocument()
+    expect(within(mainNav).getByRole('link', { name: /^Login$/i })).toBeInTheDocument()
   })
 
   it('loads My Songs practice route with reused karaoke player', async () => {
@@ -509,7 +668,9 @@ describe('App', () => {
         initialEntries={['/my-songs/practice/11111111-1111-4111-8111-111111111111']}
       >
         <AuthProvider>
-          <App />
+          <BusyOverlayProvider>
+            <App />
+          </BusyOverlayProvider>
         </AuthProvider>
       </MemoryRouter>
     )

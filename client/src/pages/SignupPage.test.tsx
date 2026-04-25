@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { BusyOverlayProvider } from '../components/busy/BusyOverlayProvider'
 import { SignupPage } from './SignupPage'
 
 beforeEach(() => {
@@ -20,10 +21,12 @@ describe('SignupPage', () => {
   it('successful signup redirects to host dashboard with success flag', async () => {
     render(
       <MemoryRouter initialEntries={['/signup']}>
-        <Routes>
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/host/dashboard" element={<div>Host Dashboard Loaded</div>} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/host/dashboard" element={<div>Host Dashboard Loaded</div>} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 
@@ -46,10 +49,12 @@ describe('SignupPage', () => {
 
     render(
       <MemoryRouter initialEntries={['/signup']}>
-        <Routes>
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/host/dashboard" element={<div>Host Dashboard Loaded</div>} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/host/dashboard" element={<div>Host Dashboard Loaded</div>} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { BusyOverlayProvider } from '../components/busy/BusyOverlayProvider'
 import { PartyGuestPlaylistPage } from './PartyGuestPlaylistPage'
 
 let socketHandlers = /** @type {Record<string, (payload?: any) => void>} */ ({})
@@ -112,9 +113,11 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
   it('shows ended screen immediately on party:ended socket event', async () => {
     render(
       <MemoryRouter initialEntries={['/party/ROOM123/playlist']}>
-        <Routes>
-          <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 
@@ -160,9 +163,11 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
 
     render(
       <MemoryRouter initialEntries={['/party/ROOM123/playlist']}>
-        <Routes>
-          <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 
@@ -174,10 +179,12 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
   it('leave party redirects guest to homepage', async () => {
     render(
       <MemoryRouter initialEntries={['/party/ROOM123/playlist']}>
-        <Routes>
-          <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
-          <Route path="/" element={<p>Home screen</p>} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
+            <Route path="/" element={<p>Home screen</p>} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 
@@ -194,9 +201,11 @@ describe('PartyGuestPlaylistPage end-party sync', () => {
   it('shows available songs, lyric preview, and suggest action', async () => {
     render(
       <MemoryRouter initialEntries={['/party/ROOM123/playlist']}>
-        <Routes>
-          <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/party/:partyCode/playlist" element={<PartyGuestPlaylistPage />} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 

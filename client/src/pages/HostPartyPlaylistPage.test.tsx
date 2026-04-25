@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { BusyOverlayProvider } from '../components/busy/BusyOverlayProvider'
 import { HostPartyPlaylistPage } from './HostPartyPlaylistPage'
 
 vi.mock('../realtime/partySocket', () => ({
@@ -93,9 +94,11 @@ describe('HostPartyPlaylistPage start flow', () => {
   it('shows Start first song after Start party and starts first queued item', async () => {
     render(
       <MemoryRouter initialEntries={['/host/parties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/playlist']}>
-        <Routes>
-          <Route path="/host/parties/:partyId/playlist" element={<HostPartyPlaylistPage />} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/host/parties/:partyId/playlist" element={<HostPartyPlaylistPage />} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 
@@ -191,9 +194,11 @@ describe('HostPartyPlaylistPage start flow', () => {
 
     render(
       <MemoryRouter initialEntries={['/host/parties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/playlist']}>
-        <Routes>
-          <Route path="/host/parties/:partyId/playlist" element={<HostPartyPlaylistPage />} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/host/parties/:partyId/playlist" element={<HostPartyPlaylistPage />} />
+          </Routes>
+        </BusyOverlayProvider>
       </MemoryRouter>
     )
 

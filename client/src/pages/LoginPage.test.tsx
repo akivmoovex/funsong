@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../AuthContext'
+import { BusyOverlayProvider } from '../components/busy/BusyOverlayProvider'
 import { LoginPage } from './LoginPage'
 
 beforeEach(() => {
@@ -38,10 +39,12 @@ function renderLogin() {
   render(
     <MemoryRouter initialEntries={['/login']}>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<div>Forgot password page</div>} />
-        </Routes>
+        <BusyOverlayProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<div>Forgot password page</div>} />
+          </Routes>
+        </BusyOverlayProvider>
       </AuthProvider>
     </MemoryRouter>
   )

@@ -118,4 +118,33 @@
   .fs-button--amber {
     @apply bg-amber-300 text-slate-900 shadow-amber-900/30 hover:bg-amber-200;
   }
+
+  /* Delayed busy overlay: western-style notes drifting left → right (respects reduced motion in component) */
+  .fs-busy-notes-clip {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .fs-busy-notes-track {
+      display: inline-flex;
+      width: max-content;
+      gap: 0.5rem;
+      padding: 0 0.5rem;
+      animation: fs-busy-notes-drift 2.4s linear infinite;
+    }
+    .fs-busy-note {
+      display: inline-block;
+      text-shadow: 0 0 8px rgba(252, 211, 77, 0.35);
+    }
+  }
 }
+
+@keyframes fs-busy-notes-drift {
+  from {
+    transform: translateX(-35%);
+  }
+  to {
+    transform: translateX(35%);
+  }
+}
+
