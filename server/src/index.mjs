@@ -6,6 +6,7 @@ import { getDbConfigSummary, getPool } from './db/pool.mjs'
 import { buildSession } from './middleware/buildSession.mjs'
 import { warnDevelopmentEnv } from './warnDevEnv.mjs'
 import { attachPartySocketIo } from './socket/partySocket.mjs'
+import { startPartyExpiryInterval } from './services/partyExpiryService.mjs'
 
 assertProductionEnv()
 warnDevelopmentEnv()
@@ -15,6 +16,11 @@ const app = createApp({ getPool, sessionMiddleware })
 const httpServer = http.createServer(app)
 const io = attachPartySocketIo(httpServer, { getPool, sessionMiddleware })
 app.set('io', io)
+startPartyExpiryInterval({
+  getPool,
+  getIo: () => /** @type {import('socket.io').Server} */ (app.get('io')),
+  intervalMs: 60_000
+})
 
 const port = Number.parseInt(String(process.env.PORT), 10) || 3000
 const host = '0.0.0.0'

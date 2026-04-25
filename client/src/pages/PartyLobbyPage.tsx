@@ -68,6 +68,7 @@ export function PartyLobbyPage() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [partyTitle, setPartyTitle] = useState<string | null>(null)
   const [playlistPreview, setPlaylistPreview] = useState<LobbyPlaylistItem[]>([])
+  const [maxGuests, setMaxGuests] = useState<number>(30)
   const [isLandscapePhone, setIsLandscapePhone] = useState(false)
 
   useEffect(() => {
@@ -82,10 +83,16 @@ export function PartyLobbyPage() {
           credentials: 'include'
         })
         const previewBody = (await previewResp.json().catch(() => ({}))) as {
-          preview?: { partyTitle?: string | null }
+          preview?: { partyTitle?: string | null; maxGuests?: number }
         }
         if (!cancel) {
           setPartyTitle(previewBody.preview?.partyTitle || null)
+          if (
+            typeof previewBody.preview?.maxGuests === 'number' &&
+            Number.isFinite(previewBody.preview.maxGuests)
+          ) {
+            setMaxGuests(previewBody.preview.maxGuests)
+          }
         }
         const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}`, {
           credentials: 'include'
@@ -140,7 +147,7 @@ export function PartyLobbyPage() {
       })
       const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[] }
       if (!cancel && r.ok) {
-        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist.slice(0, 5) : [])
+        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist : [])
       }
     })()
     return () => {
@@ -203,7 +210,7 @@ export function PartyLobbyPage() {
       })
       const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[] }
       if (r.ok) {
-        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist.slice(0, 5) : [])
+        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist : [])
       }
     }
     socket.on('song:finished', onSongFinished)
@@ -368,7 +375,7 @@ export function PartyLobbyPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2" aria-label="Room stats">
             <StatusPill kind="sync" className="text-sm">
-              {guestCount} online
+              {guestCount}/{maxGuests} joined
             </StatusPill>
             {sess && (
               <StatusPill kind="success" className="text-sm capitalize">
@@ -491,12 +498,11 @@ export function PartyLobbyPage() {
         ) : (
           <div className="space-y-3 text-center sm:text-left" role="status" aria-label="No active song">
             <p className="text-4xl" aria-hidden>
-              ⏳
+              🎤
             </p>
-            <h2 className="text-2xl font-black text-slate-100 sm:text-3xl">Waiting for the host</h2>
+            <h2 className="text-2xl font-black text-slate-100 sm:text-3xl">Stage is open</h2>
             <p className="max-w-prose text-base text-slate-400">
-              The party hasn&apos;t started karaoke yet. As soon as the host starts a song, everyone will see it
-              here.
+              There is no song on the main screen yet.
             </p>
           </div>
         )}
@@ -504,7 +510,7 @@ export function PartyLobbyPage() {
 
       <div className="fs-card-lobby rounded-3xl border-2 border-cyan-300/35 bg-gradient-to-br from-cyan-500/20 to-fuchsia-500/15 p-4 sm:p-5">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-lg font-black text-cyan-100">Playlist preview</h3>
+          <h3 className="text-lg font-black text-cyan-100">Queued songs</h3>
           <span className="text-xs font-bold text-white/70">Live</span>
         </div>
         {playlistPreview.length === 0 ? (

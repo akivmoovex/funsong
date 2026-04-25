@@ -48,6 +48,7 @@ function statusLabel(status: Row['status']): string {
 export function PartyGuestPlaylistPage() {
   const { partyCode } = useParams()
   const [partySessionId, setPartySessionId] = useState<string | null>(null)
+  const [partyClosed, setPartyClosed] = useState(false)
   const [rows, setRows] = useState<Row[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [req, setReq] = useState<string | null>(null)
@@ -59,9 +60,32 @@ export function PartyGuestPlaylistPage() {
     if (!partyCode || !PC.test(partyCode)) return
     setErr(null)
     try {
+      const info = await fetch(`/api/party/${encodeURIComponent(partyCode)}`, {
+        credentials: 'include'
+      })
+      const infoBody = (await info.json().catch(() => ({}))) as {
+        session?: { id?: string; status?: string }
+      }
+      const st = String(infoBody?.session?.status || '').toLowerCase()
+      const sid = String(infoBody?.session?.id || '')
+      if (sid) {
+        setPartySessionId(sid)
+      }
+      if (st === 'ended' || st === 'disabled') {
+        setPartyClosed(true)
+        setRows([])
+        return
+      }
+      setPartyClosed(false)
+
       const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`)
       const d = (await r.json().catch(() => ({}))) as { playlist?: Row[]; error?: string }
       if (r.status === 403) {
+        if (d.error === 'not_available') {
+          setPartyClosed(true)
+          setErr(null)
+          return
+        }
         setErr('unavailable')
         return
       }
@@ -70,16 +94,6 @@ export function PartyGuestPlaylistPage() {
         return
       }
       setRows(d.playlist ?? [])
-      if (Array.isArray(d.playlist)) {
-        const info = await fetch(`/api/party/${encodeURIComponent(partyCode)}`, {
-          credentials: 'include'
-        })
-        const body = (await info.json().catch(() => ({}))) as { session?: { id?: string } }
-        const sid = String(body?.session?.id || '')
-        if (sid) {
-          setPartySessionId(sid)
-        }
-      }
     } catch {
       setErr('network')
     }
@@ -101,9 +115,23 @@ export function PartyGuestPlaylistPage() {
     const onPlaylistUpdated = () => {
       void load()
     }
+    const onPartyEnded = () => {
+      setPartyClosed(true)
+      setErr(null)
+    }
+    const onPartyState = (s: { sessionStatus?: string }) => {
+      const st = String(s?.sessionStatus || '').toLowerCase()
+      if (st === 'ended' || st === 'disabled') {
+        setPartyClosed(true)
+      }
+    }
     socket.on('playlist:updated', onPlaylistUpdated)
+    socket.on('party:ended', onPartyEnded)
+    socket.on('party:state', onPartyState)
     return () => {
       socket.off('playlist:updated', onPlaylistUpdated)
+      socket.off('party:ended', onPartyEnded)
+      socket.off('party:state', onPartyState)
       socket.close()
     }
   }, [partySessionId, load])
@@ -181,6 +209,26 @@ export function PartyGuestPlaylistPage() {
 
   if (!partyCode || !PC.test(partyCode)) {
     return <p className="text-sm text-white/80">Invalid code.</p>
+  }
+
+  if (partyClosed) {
+    return (
+      <div className="fs-card-lobby mx-auto flex min-h-[60dvh] max-w-md flex-col items-center justify-center rounded-3xl p-6 text-center">
+        <p className="text-4xl" aria-hidden>
+          🎤
+        </p>
+        <h1 className="mt-3 text-2xl font-black sm:text-3xl">This party has ended</h1>
+        <p className="mt-2 text-balance text-sm text-white/85">
+          The host closed the room. Song requests and controls are no longer available.
+        </p>
+        <Link
+          to={`/party/${encodeURIComponent(partyCode)}`}
+          className="mt-4 rounded-2xl bg-white/20 px-4 py-2 text-sm font-extrabold text-white"
+        >
+          Back to stage
+        </Link>
+      </div>
+    )
   }
 
   return (

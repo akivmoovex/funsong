@@ -185,6 +185,16 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
    ```
 7. **Verify** — `GET /health` returns `{"status":"ok"}`; `GET /health/db` reports `database.configured` and a live `SELECT` for Postgres connectivity.
 
+### App settings defaults (migration-managed)
+
+The `app_settings` table is created by migrations and seeded idempotently with:
+
+- `max_party_guests` = `30`
+- `max_playlist_songs` = `10`
+- `party_auto_close_minutes` = `300`
+
+Run `npm run db:migrate` on each environment so these defaults are present.
+
 **Production start command (exactly):** `npm start` → `NODE_ENV=production node server/src/index.mjs`.
 
 | Variable | Required in production | Notes |

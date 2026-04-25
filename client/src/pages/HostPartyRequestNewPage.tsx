@@ -32,7 +32,7 @@ export function HostPartyRequestNewPage() {
         return
       }
       if (d.partyRequest?.id) {
-        nav(`/host/parties/${d.partyRequest.id}`)
+        nav(`/host/party-requests/${d.partyRequest.id}/waiting`)
         return
       }
       setError('invalid_response')

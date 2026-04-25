@@ -163,6 +163,8 @@ export function HostPartyPlaylistPage() {
   const [botSuggestions, setBotSuggestions] = useState<BotSugg[] | null>(null)
   const [controlReqs, setControlReqs] = useState<ControlReq[] | null>(null)
   const [songReqs, setSongReqs] = useState<SongReq[] | null>(null)
+  const [maxPlaylistSongs, setMaxPlaylistSongs] = useState<number>(10)
+  const [maxGuests, setMaxGuests] = useState<number>(30)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [karaoke, setKaraoke] = useState<HostPartyKState | null>(null)
@@ -208,6 +210,8 @@ export function HostPartyPlaylistPage() {
       const d = (await r.json().catch(() => ({}))) as {
         partySessionId?: string
         playlist?: PlItem[]
+        maxPlaylistSongs?: number
+        maxGuests?: number
         availableSongs?: AvailableSong[]
         botSuggestions?: BotSugg[]
         suggestions?: Sugg[]
@@ -225,6 +229,12 @@ export function HostPartyPlaylistPage() {
         setPartySessionId(d.partySessionId)
       }
       setPlaylist(d.playlist ?? [])
+      if (typeof d.maxPlaylistSongs === 'number' && Number.isFinite(d.maxPlaylistSongs)) {
+        setMaxPlaylistSongs(d.maxPlaylistSongs)
+      }
+      if (typeof d.maxGuests === 'number' && Number.isFinite(d.maxGuests)) {
+        setMaxGuests(d.maxGuests)
+      }
       setAvailableSongs(d.availableSongs ?? [])
       setBotSuggestions(d.botSuggestions ?? [])
       setSuggestions(d.suggestions ?? [])
@@ -313,7 +323,11 @@ export function HostPartyPlaylistPage() {
       })
       const d = (await r.json().catch(() => ({}))) as { playlist?: PlItem[]; error?: string }
       if (r.status === 409) {
-        setErr('dup')
+        if (d.error === 'queue_full') {
+          setErr('queue_full')
+        } else {
+          setErr('dup')
+        }
         return
       }
       if (r.status === 400 && d.error === 'song_not_allowed') {
@@ -408,7 +422,12 @@ export function HostPartyPlaylistPage() {
         credentials: 'include'
       })
       if (!r.ok) {
-        setErr('song_request_approve')
+        const d = (await r.json().catch(() => ({}))) as { error?: string }
+        if (d.error === 'queue_full') {
+          setErr('queue_full')
+        } else {
+          setErr('song_request_approve')
+        }
         return
       }
       void loadSongRequests()
@@ -599,7 +618,7 @@ export function HostPartyPlaylistPage() {
         <div className="flex flex-wrap items-center gap-2">
           {typeof karaoke?.connectedGuestCount === 'number' && (
             <StatusPill kind="sync" className="text-sm" icon={<span className="text-base">👥</span>}>
-              {karaoke.connectedGuestCount} online
+              {karaoke.connectedGuestCount}/{maxGuests} joined
             </StatusPill>
           )}
           {karaoke?.sessionStatus && (
@@ -627,6 +646,7 @@ export function HostPartyPlaylistPage() {
           {err === 'control_reject' && 'Could not reject control request.'}
           {err === 'song_request_approve' && 'Could not approve song request.'}
           {err === 'song_request_reject' && 'Could not reject song request.'}
+          {err === 'queue_full' && 'Song queue is full.'}
           {err === 'take_control' && 'Could not take back control.'}
           {err === 'ca_toggle' && 'Could not update guest audio mode.'}
           {err === 'start_party' && 'Could not start party.'}
@@ -839,7 +859,9 @@ export function HostPartyPlaylistPage() {
         </div>
       )}
       <div>
-        <h3 className="text-lg font-black text-amber-100">Queue</h3>
+        <h3 className="text-lg font-black text-amber-100">
+          Queue <span className="text-sm font-bold text-amber-200">({playlist?.length ?? 0}/{maxPlaylistSongs} songs)</span>
+        </h3>
         {!playlist && <p className="text-sm text-white/60">Loading…</p>}
         {playlist && playlist.length === 0 && (
           <div className="mt-2 rounded-2xl border-2 border-dashed border-amber-400/40 bg-amber-500/5 p-6 text-center" role="status">

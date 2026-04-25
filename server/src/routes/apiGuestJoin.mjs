@@ -9,6 +9,7 @@ import { streamAudioFileToResponse } from '../audio/streamFile.mjs'
 import * as plRepo from '../db/repos/partyPlaylistItemsRepo.mjs'
 import * as crRepo from '../db/repos/controlRequestsRepo.mjs'
 import { emitControlAndPartyState } from '../services/partyRealtime.mjs'
+import { ensurePartyNotExpired } from '../services/partyExpiryService.mjs'
 
 const PC = /^[A-Za-z0-9._-]{4,64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -44,6 +45,11 @@ export function createGuestJoinRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const preview = await getJoinPreview(pool, code)
       if (!preview.found) {
         return res.status(404).json({ error: 'party_not_found' })
@@ -67,6 +73,11 @@ export function createGuestJoinRouter(d) {
         if (!pool) {
           return res.status(503).json({ error: 'no_database' })
         }
+        await ensurePartyNotExpired({
+          getPool: d.getPool,
+          io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+          partyCode: code
+        })
         const b = /** @type {Record<string, unknown>} */ (req.body) || {}
         const displayName = String(b.displayName ?? b.display_name ?? '')
         const language = String(
@@ -135,6 +146,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const tok = readGuestTokenFromRequest(req)
       if (!tok) {
         return res.status(401).json({ error: 'no_guest_session' })
@@ -180,6 +196,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const tok = readGuestTokenFromRequest(req)
       if (!tok) {
         return res.status(401).json({ error: 'no_guest_session' })
@@ -238,6 +259,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const tok = readGuestTokenFromRequest(req)
       if (!tok) {
         return res.status(401).json({ error: 'no_guest_session' })
@@ -318,6 +344,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const s = await findSessionByPartyCode(code, pool)
       if (!s) {
         return res.status(404).json({ error: 'party_not_found' })
@@ -354,6 +385,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const tok = readGuestTokenFromRequest(req)
       if (!tok) {
         return res.status(401).json({ error: 'no_guest_session' })
@@ -416,6 +452,11 @@ export function createPartyGuestRouter(d) {
       if (!pool) {
         return res.status(503).json({ error: 'no_database' })
       }
+      await ensurePartyNotExpired({
+        getPool: d.getPool,
+        io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+        partyCode: code
+      })
       const tok = readGuestTokenFromRequest(req)
       if (!tok) {
         return res.status(401).json({ error: 'no_guest_session' })

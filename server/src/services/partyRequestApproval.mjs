@@ -1,4 +1,5 @@
 import { generateJoinToken, generateUniquePartyCode } from './partyCodes.mjs'
+import { getIntSetting } from './appSettingsService.mjs'
 
 /**
  * @param {import('pg').Pool} pool
@@ -32,7 +33,8 @@ export async function approvePartyRequest(pool, requestId, adminUserId) {
     }
     const partyCode = await generateUniquePartyCode(c)
     const joinToken = generateJoinToken()
-    const cap = Math.min(100, Math.max(1, Number(r.expected_guests) || 30))
+    const defaultMaxGuests = await getIntSetting('max_party_guests', 30, c)
+    const cap = Math.min(100, Math.max(1, Number(r.expected_guests) || defaultMaxGuests))
     const title = r.party_name || 'Party'
     const { rows: sessRows } = await c.query(
       `INSERT INTO party_sessions (

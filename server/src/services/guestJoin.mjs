@@ -1,10 +1,23 @@
 import { createGuest, countConnectedGuestsBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 import { findSessionByPartyCode } from '../db/repos/partySessionsRepo.mjs'
+import { getIntSetting } from './appSettingsService.mjs'
 
 const LANG = new Set(['english', 'hindi', 'hebrew'])
 
 const ALLOW = new Set(['approved', 'active'])
 const BLOCK = new Set(['disabled', 'ended'])
+
+/**
+ * @param {Record<string, any>} session
+ * @param {import('pg').Pool | import('pg').PoolClient} p
+ */
+async function resolveSessionMaxGuests(session, p) {
+  const stored = Number(session?.max_guests)
+  if (Number.isFinite(stored) && stored > 0) {
+    return stored
+  }
+  return getIntSetting('max_party_guests', 30, p)
+}
 
 /**
  * @param {import('pg').Pool} pool
@@ -47,7 +60,8 @@ export async function performGuestJoin(pool, partyCode, p) {
       return { ok: false, error: 'not_joinable' }
     }
     const n = await countConnectedGuestsBySessionId(s.id, c)
-    if (n >= s.max_guests) {
+    const maxGuests = await resolveSessionMaxGuests(s, c)
+    if (n >= maxGuests) {
       await c.query('ROLLBACK')
       return { ok: false, error: 'full' }
     }
@@ -85,6 +99,7 @@ export async function getJoinPreview(pool, partyCode) {
     return { found: false }
   }
   const n = await countConnectedGuestsBySessionId(s.id, pool)
+  const maxGuests = await resolveSessionMaxGuests(s, pool)
   if (BLOCK.has(s.status) || !ALLOW.has(s.status)) {
     return {
       found: true,
@@ -94,10 +109,10 @@ export async function getJoinPreview(pool, partyCode) {
       status: s.status,
       partyTitle: s.title,
       currentGuests: n,
-      maxGuests: s.max_guests
+      maxGuests
     }
   }
-  const atCapacity = n >= s.max_guests
+  const atCapacity = n >= maxGuests
   return {
     found: true,
     canJoin: !atCapacity,
@@ -106,6 +121,6 @@ export async function getJoinPreview(pool, partyCode) {
     status: s.status,
     partyTitle: s.title,
     currentGuests: n,
-    maxGuests: s.max_guests
+    maxGuests
   }
 }

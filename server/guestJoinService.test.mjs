@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as partyGuestsRepo from './src/db/repos/partyGuestsRepo.mjs'
 import * as partySessionsRepo from './src/db/repos/partySessionsRepo.mjs'
+import * as appSettingsService from './src/services/appSettingsService.mjs'
 import { getJoinPreview, performGuestJoin } from './src/services/guestJoin.mjs'
 
 vi.mock('./src/db/repos/partySessionsRepo.mjs', async (importOriginal) => {
@@ -11,9 +12,14 @@ vi.mock('./src/db/repos/partyGuestsRepo.mjs', async (importOriginal) => {
   const m = await importOriginal()
   return { ...m, countConnectedGuestsBySessionId: vi.fn(), createGuest: vi.fn() }
 })
+vi.mock('./src/services/appSettingsService.mjs', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, getIntSetting: vi.fn() }
+})
 
 const { findSessionByPartyCode } = partySessionsRepo
 const { countConnectedGuestsBySessionId, createGuest } = partyGuestsRepo
+const { getIntSetting } = appSettingsService
 
 const sid = 'ssssssss-ssss-4sss-8sss-ssssssssssss'
 const code = 'PartyCode01'
@@ -45,6 +51,7 @@ function makePoolForJoin() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  getIntSetting.mockResolvedValue(30)
   findSessionByPartyCode.mockImplementation(async (pc, p) => {
     void p
     if (pc === code) {
@@ -110,6 +117,38 @@ describe('performGuestJoin (V1: guest join + 31st cap)', () => {
       return
     }
     expect(r.error).toBe('full')
+  })
+
+  it('uses setting fallback when session max_guests is null', async () => {
+    getIntSetting.mockResolvedValueOnce(12)
+    const pool = {
+      connect: async () => {
+        const c = { query: vi.fn(), release: vi.fn() }
+        c.query.mockImplementation((q) => {
+          const s = String(q)
+          if (s.startsWith('BEGIN') || s.startsWith('ROLLBACK') || s.startsWith('COMMIT')) {
+            return Promise.resolve({ rows: [] })
+          }
+          if (s.includes('SELECT * FROM party_sessions') && s.includes('FOR UPDATE')) {
+            return Promise.resolve({ rows: [{ ...baseSession, max_guests: null }] })
+          }
+          return Promise.resolve({ rows: [] })
+        })
+        return c
+      }
+    }
+    countConnectedGuestsBySessionId.mockResolvedValue(12)
+    const r = await performGuestJoin(/** @type {any} */ (pool), code, {
+      displayName: 'X',
+      language: 'english',
+      guestToken: 't-settings'
+    })
+    expect(r.ok).toBe(false)
+    if (r.ok) {
+      return
+    }
+    expect(r.error).toBe('full')
+    expect(getIntSetting).toHaveBeenCalledWith('max_party_guests', 30, expect.anything())
   })
 
   it('disabled session: not joinable (scenario 22, service path)', async () => {

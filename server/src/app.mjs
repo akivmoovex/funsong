@@ -21,6 +21,7 @@ import {
   createAdminPartiesRouter,
   createAdminPartyRequestsRouter
 } from './routes/apiAdminParty.mjs'
+import { createAdminSettingsRouter } from './routes/apiAdminSettings.mjs'
 import { createHostPartyRequestsRouter } from './routes/apiHostPartyRequests.mjs'
 import { makeHostPartyQrHandler } from './routes/apiHostPartyQr.mjs'
 import { createHostPartyPlaylistRouter } from './routes/apiHostPartyPlaylist.mjs'
@@ -77,6 +78,7 @@ export function createApp(options = {}) {
     createHostPartyRequestsRouter({ getPool: getPoolInj })
   const adminPartyRequestRouter = createAdminPartyRequestsRouter({ getPool: getPoolInj })
   const adminPartiesRouter = createAdminPartiesRouter({ getPool: getPoolInj })
+  const adminSettingsRouter = createAdminSettingsRouter({ getPool: getPoolInj })
   const hostPartyQrHandler = makeHostPartyQrHandler({ getPool: getPoolInj })
   const guestJoinApi = createGuestJoinRouter({
     getPool: getPoolInj,
@@ -142,6 +144,12 @@ export function createApp(options = {}) {
     requireAuth,
     requireSuperAdmin,
     adminPartiesRouter
+  )
+  app.use(
+    '/api/admin/settings',
+    requireAuth,
+    requireSuperAdmin,
+    adminSettingsRouter
   )
   app.use(
     '/api/host/party-requests',
@@ -242,12 +250,14 @@ export function createApp(options = {}) {
     app.get('/party/:partyCode', sendIndex)
     app.get('/host/dashboard', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/new', requireAuth, requireHost, sendIndex)
+    app.get('/host/party-requests/:partyId/waiting', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/:partyId/qr', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/:partyId/playlist', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/:partyId', requireAuth, requireHost, sendIndex)
     app.get('/admin/party-requests', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin/parties/:partyId', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin/parties', requireAuth, requireSuperAdmin, sendIndex)
+    app.get('/admin/settings', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin', requireAuth, requireSuperAdmin, sendIndex)
     app.get(/.+/, (req, res) => {
       if (path.extname(req.path)) {

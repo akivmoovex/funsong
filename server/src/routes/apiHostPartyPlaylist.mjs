@@ -25,6 +25,8 @@ import {
   getPartySocketRoomName
 } from '../services/partyRealtime.mjs'
 import { buildPartyKaraokeState } from '../services/partyKaraokeState.mjs'
+import { getIntSetting } from '../services/appSettingsService.mjs'
+import { ensurePartyNotExpired } from '../services/partyExpiryService.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -410,6 +412,12 @@ export function createHostPartyPlaylistRouter(d) {
           return res.status(400).json({ error: 'invalid_song_id' })
         }
         if (!(await plRepo.hasSongInSessionPlaylist(String(session.id), songId, c))) {
+          const maxPlaylistSongs = await getIntSetting('max_playlist_songs', 10, c)
+          const playlist = await plRepo.listPlaylistWithSongsForSession(String(session.id), c)
+          if (playlist.length >= maxPlaylistSongs) {
+            await c.query('ROLLBACK')
+            return res.status(409).json({ error: 'queue_full' })
+          }
           const pos = await plRepo.nextPositionAtEnd(String(session.id), c)
           await plRepo.addSongAtPosition(
             {
@@ -493,9 +501,16 @@ export function createHostPartyPlaylistRouter(d) {
           limit: 20
         })
       ])
+      const maxPlaylistSongs = await getIntSetting('max_playlist_songs', 10, pool)
+      const storedMaxGuests = Number(session.max_guests)
+      const maxGuests = Number.isFinite(storedMaxGuests) && storedMaxGuests > 0
+        ? storedMaxGuests
+        : await getIntSetting('max_party_guests', 30, pool)
       return res.json({
         partySessionId: String(session.id),
         playlist,
+        maxPlaylistSongs,
+        maxGuests,
         availableSongs: availableSongs.map((s) => ({
           id: s.id,
           title: s.title,
@@ -546,6 +561,12 @@ export function createHostPartyPlaylistRouter(d) {
           'SELECT id FROM party_sessions WHERE id = $1::uuid FOR UPDATE',
           [session.id]
         )
+        const maxPlaylistSongs = await getIntSetting('max_playlist_songs', 10, c)
+        const existingPlaylist = await plRepo.listPlaylistWithSongsForSession(session.id, c)
+        if (existingPlaylist.length >= maxPlaylistSongs) {
+          await c.query('ROLLBACK')
+          return res.status(409).json({ error: 'queue_full' })
+        }
         const pos = await plRepo.nextPositionAtEnd(session.id, c)
         let row
         try {
@@ -688,6 +709,11 @@ async function resolveHostSession(req, d) {
   if (!pool) {
     return { error: 503, body: { error: 'no_database' }, pool: /** @type {any} */ (null) }
   }
+  await ensurePartyNotExpired({
+    getPool: d.getPool,
+    io: /** @type {import('socket.io').Server | undefined} */ (req.app.get('io')),
+    partyRequestId: partyId
+  })
   const u = /** @type {{ id: string }} */ (req.funsongUser)
   const pr = await findRequestByIdForHost(partyId, u.id, pool)
   if (!pr) {

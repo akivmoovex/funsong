@@ -54,6 +54,26 @@ Legend:
 | 44 | Host access to admin route/API | Host is denied super-admin routes/APIs |  |  |
 | 45 | Existing song/playlist/karaoke flow | Core live-party playlist + karaoke flow still works |  |  |
 
+## 49B-49H Final QA Scenarios
+
+| # | Scenario | Expected Result | Pass/Fail | Notes |
+|---|---|---|---|---|
+| 46 | Host creates party request | Request is created successfully |  |  |
+| 47 | Host waiting screen | Host lands on waiting page route after create |  |  |
+| 48 | Waiting auto-refresh | Status checks continue every ~5s and countdown updates |  |  |
+| 49 | Admin approval redirect | Approved request redirects host to QR/detail page |  |  |
+| 50 | Guest queue sync | Guest lobby shows all queued songs (not truncated) |  |  |
+| 51 | No active song copy | Guest sees "Stage is open / There is no song on the main screen yet." |  |  |
+| 52 | End party realtime sync | Lobby + guest playlist switch to ended screen immediately |  |  |
+| 53 | Join after ended | New join attempts are blocked |  |  |
+| 54 | Super admin burger menu | Menu shows Dashboard/Songs/Parties/Settings/Logout |  |  |
+| 55 | Settings save | Settings page loads and saves all 3 values |  |  |
+| 56 | New max guests applied | New party session uses updated max guest limit |  |  |
+| 57 | New max songs applied | Queue add and song-request approval block at cap |  |  |
+| 58 | Queue full copy | Host sees exact message "Song queue is full." |  |  |
+| 59 | Auto-close timeout | Approved/active party auto-closes after configured timeout |  |  |
+| 60 | Auto-close guest state | Guests receive ended state and interactions are blocked |  |  |
+
 ## Quick Regression Notes
 
 - Verify control requests and song requests remain separated in host panels.

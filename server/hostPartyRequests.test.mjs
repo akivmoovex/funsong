@@ -6,6 +6,7 @@ import { findUserByEmail, findUserById } from './src/db/repos/usersRepo.mjs'
 import * as partyRequestsRepo from './src/db/repos/partyRequestsRepo.mjs'
 import * as partySessionsRepo from './src/db/repos/partySessionsRepo.mjs'
 import * as partyRequestApproval from './src/services/partyRequestApproval.mjs'
+import * as appSettingsService from './src/services/appSettingsService.mjs'
 import { createApp } from './src/app.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
@@ -33,9 +34,14 @@ vi.mock('./src/services/partyRequestApproval.mjs', () => ({
   rejectPartyRequest: vi.fn()
 }))
 
+vi.mock('./src/services/appSettingsService.mjs', () => ({
+  getIntSetting: vi.fn()
+}))
+
 const { createRequest, findRequestById, listRequestsByHostId, findRequestByIdForHost } = partyRequestsRepo
 const { findSessionByPartyRequestId } = partySessionsRepo
 const { approvePartyRequest } = partyRequestApproval
+const { getIntSetting } = appSettingsService
 
 const hostUidA = '8c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0d'
 const hostUidB = '2c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0e'
@@ -92,6 +98,7 @@ beforeEach(() => {
       max_guests: 30
     }
   })
+  getIntSetting.mockResolvedValue(30)
 })
 
 async function loginHost(agent, uid, email) {
@@ -140,6 +147,35 @@ describe('host party requests API', () => {
     expect(r.body.partyRequest.canShowJoinLink).toBe(true)
     expect(r.body.partyRequest.joinPath).toBe('/join/AUTO-CODE1')
     expect(approvePartyRequest).toHaveBeenCalledWith(expect.anything(), prIdA, hostUidA)
+  })
+
+  it('host create uses max_party_guests setting for expectedGuests', async () => {
+    getIntSetting.mockResolvedValueOnce(42)
+    createRequest.mockImplementation(async (o) => {
+      expect(o.expectedGuests).toBe(42)
+      return { ...partyRowPending, party_name: o.partyName, expected_guests: o.expectedGuests, location: o.location }
+    })
+    findRequestById.mockResolvedValue({
+      ...partyRowPending,
+      status: 'approved',
+      expected_guests: 42
+    })
+    findSessionByPartyRequestId.mockResolvedValue({
+      join_code: 'AUTO-CODE1',
+      party_code: 'AUTO-CODE1',
+      status: 'approved'
+    })
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.post('/api/host/parties/request').send({
+      partyName: 'Settings cap party',
+      eventDatetime: '2030-07-15T12:00:00.000Z',
+      location: 'Rooftop',
+      privateUseConfirmed: true
+    })
+    expect(r.status).toBe(201)
+    expect(getIntSetting).toHaveBeenCalledWith('max_party_guests', 30, expect.anything())
   })
 
   it('rejects create without private use confirmation (400)', async () => {
@@ -297,5 +333,67 @@ describe('host party requests API', () => {
     const r = await agent.get('/api/host/party-requests')
     expect(r.status).toBe(200)
     expect(listRequestsByHostId).toHaveBeenCalledWith(hostUidB, expect.anything())
+  })
+
+  it('status endpoint returns pending with no redirect', async () => {
+    findRequestByIdForHost.mockResolvedValue({
+      ...partyRowPending,
+      status: 'pending'
+    })
+    findSessionByPartyRequestId.mockResolvedValue(null)
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.get(`/api/host/party-requests/${prIdA}/status`)
+    expect(r.status).toBe(200)
+    expect(r.body.request?.status).toBe('pending')
+    expect(r.body.request?.partyName).toBe('Test party')
+    expect(r.body.request?.redirectPath).toBeNull()
+  })
+
+  it('status endpoint returns approved with qr redirect target', async () => {
+    findRequestByIdForHost.mockResolvedValue({
+      ...partyRowPending,
+      status: 'approved'
+    })
+    findSessionByPartyRequestId.mockResolvedValue({
+      join_code: 'APPROVED-1',
+      party_code: 'APPROVED-1',
+      status: 'approved'
+    })
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.get(`/api/host/party-requests/${prIdA}/status`)
+    expect(r.status).toBe(200)
+    expect(r.body.request?.status).toBe('approved')
+    expect(r.body.request?.redirectPath).toBe(`/host/parties/${prIdA}/qr`)
+    expect(r.body.request?.canShowQr).toBe(true)
+  })
+
+  it('status endpoint returns rejected with rejection reason', async () => {
+    findRequestByIdForHost.mockResolvedValue({
+      ...partyRowPending,
+      status: 'rejected',
+      rejection_reason: 'Missing details'
+    })
+    findSessionByPartyRequestId.mockResolvedValue(null)
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    const r = await agent.get(`/api/host/party-requests/${prIdA}/status`)
+    expect(r.status).toBe(200)
+    expect(r.body.request?.status).toBe('rejected')
+    expect(r.body.request?.rejectionReason).toBe('Missing details')
+    expect(r.body.request?.redirectPath).toBe(`/host/parties/${prIdA}`)
+  })
+
+  it('status endpoint does not expose another host request', async () => {
+    const app = makeApp()
+    const agent = request.agent(app)
+    await loginHost(agent, hostUidA, emailA)
+    findRequestByIdForHost.mockResolvedValue(null)
+    const r = await agent.get(`/api/host/party-requests/${prIdA}/status`)
+    expect(r.status).toBe(404)
   })
 })

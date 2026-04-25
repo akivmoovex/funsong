@@ -9,8 +9,10 @@ import { AdminPartyRequestsPage } from './pages/AdminPartyRequestsPage'
 import { AdminSongFormPage } from './pages/AdminSongFormPage'
 import { AdminSongLyricsPage } from './pages/AdminSongLyricsPage'
 import { AdminSongsListPage } from './pages/AdminSongsListPage'
+import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { HomePage } from './pages/HomePage'
 import { HostPage } from './pages/HostPage'
+import { HostPartyApprovalWaitingPage } from './pages/HostPartyApprovalWaitingPage'
 import { HostPartyDetailPage } from './pages/HostPartyDetailPage'
 import { HostPartyPlaylistPage } from './pages/HostPartyPlaylistPage'
 import { HostPartyQrPage } from './pages/HostPartyQrPage'
@@ -75,6 +77,14 @@ export function App() {
           }
         />
         <Route
+          path="/host/party-requests/:partyId/waiting"
+          element={
+            <ProtectedRoute need="host">
+              <HostPartyApprovalWaitingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/host/parties/:partyId/qr"
           element={
             <ProtectedRoute need="host">
@@ -127,6 +137,14 @@ export function App() {
           element={
             <ProtectedRoute need="super_admin">
               <AdminSongsListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute need="super_admin">
+              <AdminSettingsPage />
             </ProtectedRoute>
           }
         />

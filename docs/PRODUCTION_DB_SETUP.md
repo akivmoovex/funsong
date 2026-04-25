@@ -77,6 +77,12 @@ ORDER BY table_name;
 
 You should see app tables (including **`users`**, **`schema_migrations`**, and others from the `migrations/` folder). If **no** `users` table appears, **do not** run the seed until migrations succeed.
 
+After current migrations, defaults in `app_settings` are also seeded idempotently:
+
+- `max_party_guests` = `30`
+- `max_playlist_songs` = `10`
+- `party_auto_close_minutes` = `300`
+
 ---
 
 ## 5. Set super admin environment variables
