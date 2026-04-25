@@ -1,6 +1,7 @@
 import { countConnectedGuestsBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 import { listConnectedGuestSummariesBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 import { buildPartyKaraokeState } from './partyKaraokeState.mjs'
+import { logRealtimeEvent } from './realtimeDebug.mjs'
 
 /**
  * @param {string} sessionId
@@ -21,6 +22,10 @@ export async function emitControlAndPartyState(io, getPool, sessionId, eventName
   if (!io || !pool) return
   const room = getPartySocketRoomName(sessionId)
   const state = await buildPartyKaraokeState(sessionId, pool, {})
+  logRealtimeEvent(eventName, {
+    sessionId: String(sessionId),
+    requestId: eventBody?.requestId ? String(eventBody.requestId) : null
+  })
   io.to(room).emit(eventName, {
     sessionId,
     ...(eventBody || {})
@@ -85,6 +90,16 @@ export async function emitLyricsUpdatedAndState(io, getPool, sessionId, action, 
 export function emitPartyPlaylistUpdated(io, sessionId, payload = {}) {
   if (!io) return
   const room = getPartySocketRoomName(sessionId)
+  const source =
+    typeof payload?.source === 'string' && String(payload.source).length > 0
+      ? String(payload.source)
+      : 'unknown'
+  const count = Array.isArray(payload?.playlist) ? payload.playlist.length : undefined
+  logRealtimeEvent('playlist:updated', {
+    sessionId: String(sessionId),
+    source,
+    count
+  })
   io.to(room).emit('playlist:updated', {
     sessionId: String(sessionId),
     ...payload
@@ -111,6 +126,10 @@ export async function emitPartyGuestsUpdated(io, sessionId, getPool) {
   if (!pool) return
   const room = getPartySocketRoomName(sessionId)
   const payload = await getGuestsUpdatedPayload(sessionId, pool)
+  logRealtimeEvent('guests:updated', {
+    sessionId: String(sessionId),
+    count: payload.connectedGuestCount
+  })
   io.to(room).emit('guests:updated', payload)
 }
 
@@ -149,6 +168,10 @@ export async function emitHostPartyEnded(io, getPool, sessionId) {
   const room = getPartySocketRoomName(sessionId)
   const state = await buildPartyKaraokeState(sessionId, pool, {})
   const body = { sessionId: String(sessionId), source: 'host' }
+  logRealtimeEvent('party:ended', {
+    sessionId: String(sessionId),
+    source: 'host'
+  })
   io.to(room).emit('party:ended', body)
   if (state) {
     io.to(room).emit('party:state', state)

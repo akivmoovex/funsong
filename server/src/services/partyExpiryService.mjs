@@ -3,6 +3,7 @@ import { appendEvent } from '../db/repos/partyEventsRepo.mjs'
 import { getIntSetting } from './appSettingsService.mjs'
 import { buildPartyKaraokeState } from './partyKaraokeState.mjs'
 import { getPartySocketRoomName } from './partyRealtime.mjs'
+import { logRealtimeEvent } from './realtimeDebug.mjs'
 
 /** @type {boolean | null} */
 let hasStartedAtColumn = null
@@ -225,6 +226,10 @@ export async function emitPartyExpired(io, getPool, sessionId) {
   const room = getPartySocketRoomName(sessionId)
   const state = await buildPartyKaraokeState(sessionId, pool, {})
   const payload = { sessionId: String(sessionId), source: 'auto_close' }
+  logRealtimeEvent('party:expired', {
+    sessionId: String(sessionId),
+    source: 'auto_close'
+  })
   io.to(room).emit('party:expired', payload)
   io.to(room).emit('party:ended', payload)
   if (state) {

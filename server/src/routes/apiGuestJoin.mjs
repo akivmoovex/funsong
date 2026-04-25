@@ -25,6 +25,7 @@ import * as plRepo from '../db/repos/partyPlaylistItemsRepo.mjs'
 import * as crRepo from '../db/repos/controlRequestsRepo.mjs'
 import { emitControlAndPartyState, emitPartyGuestsUpdated } from '../services/partyRealtime.mjs'
 import { ensurePartyNotExpired } from '../services/partyExpiryService.mjs'
+import { logRealtimeEvent } from '../services/realtimeDebug.mjs'
 
 const PC = /^[A-Za-z0-9._-]{4,64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -630,6 +631,10 @@ export function createPartyGuestRouter(d) {
         },
         pool
       )
+      logRealtimeEvent('song:requested', {
+        sessionId: String(session.id),
+        requestId: String(row.id)
+      })
       const io = /** @type {import('socket.io').Server | undefined} */ (req.app.get('io'))
       await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:requested', {
         requestId: String(row.id),
