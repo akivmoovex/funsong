@@ -195,6 +195,19 @@ The `app_settings` table is created by migrations and seeded idempotently with:
 
 Run `npm run db:migrate` on each environment so these defaults are present.
 
+### User profile and favorites schema (migration-managed)
+
+`users` includes additive profile columns:
+
+- `first_name`
+- `last_name`
+- `phone_number`
+- `avatar_key`
+
+`user_favorite_songs` stores `(user_id, song_id)` pairs with `created_at` and cascade-delete foreign keys.
+
+Run `npm run db:migrate` on each environment to apply these schema additions.
+
 **Production start command (exactly):** `npm start` → `NODE_ENV=production node server/src/index.mjs`.
 
 | Variable | Required in production | Notes |

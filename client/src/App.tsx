@@ -10,6 +10,7 @@ import { AdminSongFormPage } from './pages/AdminSongFormPage'
 import { AdminSongLyricsPage } from './pages/AdminSongLyricsPage'
 import { AdminSongsListPage } from './pages/AdminSongsListPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
+import { AdminPasswordResetRequestsPage } from './pages/AdminPasswordResetRequestsPage'
 import { HomePage } from './pages/HomePage'
 import { HostPage } from './pages/HostPage'
 import { HostPartyApprovalWaitingPage } from './pages/HostPartyApprovalWaitingPage'
@@ -21,8 +22,12 @@ import { JoinPage } from './pages/JoinPage'
 import { PartyGuestPlaylistPage } from './pages/PartyGuestPlaylistPage'
 import { PartyLobbyPage } from './pages/PartyLobbyPage'
 import { LoginPage } from './pages/LoginPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { SignupPage } from './pages/SignupPage'
 import { PublicContentNotFoundPage } from './pages/PublicContentNotFoundPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { MySongsPage } from './pages/MySongsPage'
+import { MySongsPracticePage } from './pages/MySongsPracticePage'
 
 export function App() {
   return (
@@ -59,7 +64,32 @@ export function App() {
         <Route path="/lyrics/*" element={<PublicContentNotFoundPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route
+          path="/account/profile"
+          element={
+            <ProtectedRoute need="host">
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-songs"
+          element={
+            <ProtectedRoute need="host">
+              <MySongsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-songs/practice/:songId"
+          element={
+            <ProtectedRoute need="host">
+              <MySongsPracticePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/host/dashboard"
           element={
@@ -145,6 +175,14 @@ export function App() {
           element={
             <ProtectedRoute need="super_admin">
               <AdminSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/password-reset-requests"
+          element={
+            <ProtectedRoute need="super_admin">
+              <AdminPasswordResetRequestsPage />
             </ProtectedRoute>
           }
         />

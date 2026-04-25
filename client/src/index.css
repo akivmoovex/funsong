@@ -60,6 +60,25 @@
   .fs-animate-confetti {
     animation: fs-confetti-fall 2.6s ease-in both;
   }
+
+  @keyframes fs-signup-border-countdown {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 400;
+    }
+  }
+
+  .fs-signup-success-border {
+    fill: transparent;
+    stroke: rgb(52 211 153 / 0.95);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-dasharray: 400;
+    stroke-dashoffset: 0;
+    animation: fs-signup-border-countdown 5s linear forwards;
+  }
 }
 
 @layer components {

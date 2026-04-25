@@ -14,6 +14,10 @@ function toPublicUser(row) {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
+    firstName: row.first_name ?? null,
+    lastName: row.last_name ?? null,
+    phoneNumber: row.phone_number ?? null,
+    avatarKey: row.avatar_key ?? null,
     role: row.role,
     isActive: row.is_active !== false
   }

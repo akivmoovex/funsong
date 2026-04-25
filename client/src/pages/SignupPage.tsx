@@ -42,7 +42,7 @@ export function SignupPage() {
         }
         return r
       })
-      .then(() => nav('/host/dashboard', { replace: true }))
+      .then(() => nav('/host/dashboard?signup=success', { replace: true }))
       .catch((e: { message?: string } | string) => {
         const m = typeof e === 'string' ? e : e?.message || 'signup_failed'
         setErr(m)

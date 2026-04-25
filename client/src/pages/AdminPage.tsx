@@ -46,6 +46,18 @@ export function AdminPage() {
           Open settings
         </Link>
       </div>
+      <div className="fs-card-lobby border-2 border-cyan-200/40 p-4">
+        <h3 className="text-lg font-black text-cyan-100">Password reset queue</h3>
+        <p className="mt-1 text-sm text-white/90">
+          Review manual forgot-password requests submitted by users. V1 stores pending requests for admin handling.
+        </p>
+        <Link
+          to="/admin/password-reset-requests"
+          className="mt-3 inline-flex min-h-[3rem] touch-manipulation items-center justify-center rounded-2xl border-2 border-cyan-200/50 bg-cyan-500/15 px-4 text-center text-base font-extrabold text-cyan-100 no-underline"
+        >
+          Open password reset queue
+        </Link>
+      </div>
       <div className="fs-card-lobby border-2 border-amber-200/40 p-4">
         <h3 className="text-lg font-black text-amber-100">Legacy manual reviews</h3>
         <p className="mt-1 text-sm text-white/90">

@@ -27,6 +27,12 @@ import { makeHostPartyQrHandler } from './routes/apiHostPartyQr.mjs'
 import { createHostPartyPlaylistRouter } from './routes/apiHostPartyPlaylist.mjs'
 import { createHostControlRouter } from './routes/apiHostControl.mjs'
 import { createGuestJoinRouter, createPartyGuestRouter } from './routes/apiGuestJoin.mjs'
+import { createAccountProfileRouter } from './routes/apiAccountProfile.mjs'
+import { createAccountMySongsRouter } from './routes/apiAccountMySongs.mjs'
+import {
+  createAdminPasswordResetRequestsRouter,
+  createAuthPasswordResetRouter
+} from './routes/apiAuthPasswordReset.mjs'
 import { streamAudioFileToResponse } from './audio/streamFile.mjs'
 
 const UUID_SONG = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -90,6 +96,10 @@ export function createApp(options = {}) {
   })
   const hostPartyPlaylistApi = createHostPartyPlaylistRouter({ getPool: getPoolInj })
   const hostControlApi = createHostControlRouter({ getPool: getPoolInj })
+  const accountProfileApi = createAccountProfileRouter({ getPool: getPoolInj })
+  const accountMySongsApi = createAccountMySongsRouter({ getPool: getPoolInj })
+  const authPasswordResetApi = createAuthPasswordResetRouter({ getPool: getPoolInj })
+  const adminPasswordResetApi = createAdminPasswordResetRequestsRouter({ getPool: getPoolInj })
   app.set('getPool', () => {
     return getPoolInj()
   })
@@ -107,10 +117,16 @@ export function createApp(options = {}) {
   app.post('/api/auth/login', loginRateLimit, postLogin)
   app.post('/api/auth/signup', loginRateLimit, postSignup)
   app.post('/api/auth/logout', postLogout)
+  app.use('/api/auth/forgot-password', loginRateLimit, authPasswordResetApi)
   // Same-origin POST aliases (optional; PWA in production may use /api only)
   app.post('/login', loginRateLimit, postLogin)
   app.post('/signup', loginRateLimit, postSignup)
   app.post('/logout', postLogout)
+  app.use('/forgot-password', loginRateLimit, authPasswordResetApi)
+  app.post('/account/profile', requireAuth, async (req, res, next) => {
+    const h = accountProfileApi
+    return h(req, res, next)
+  })
   app.get(
     '/api/protected/health-host',
     requireAuth,
@@ -126,6 +142,16 @@ export function createApp(options = {}) {
     (req, res) => {
       res.json({ ok: true, role: req.funsongUser.role })
     }
+  )
+  app.use(
+    '/api/account/profile',
+    requireAuth,
+    accountProfileApi
+  )
+  app.use(
+    '/api/account/my-songs',
+    requireAuth,
+    accountMySongsApi
   )
   app.use(
     '/api/admin/songs',
@@ -150,6 +176,12 @@ export function createApp(options = {}) {
     requireAuth,
     requireSuperAdmin,
     adminSettingsRouter
+  )
+  app.use(
+    '/api/admin/password-reset-requests',
+    requireAuth,
+    requireSuperAdmin,
+    adminPasswordResetApi
   )
   app.use(
     '/api/host/party-requests',
@@ -249,8 +281,12 @@ export function createApp(options = {}) {
     app.get('/party/:partyCode/playlist', sendIndex)
     app.get('/party/:partyCode', sendIndex)
     app.get('/host/dashboard', requireAuth, requireHost, sendIndex)
+    app.get('/forgot-password', sendIndex)
     app.get('/host/parties/new', requireAuth, requireHost, sendIndex)
     app.get('/host/party-requests/:partyId/waiting', requireAuth, requireHost, sendIndex)
+    app.get('/account/profile', requireAuth, sendIndex)
+    app.get('/my-songs', requireAuth, sendIndex)
+    app.get('/my-songs/practice/:songId', requireAuth, sendIndex)
     app.get('/host/parties/:partyId/qr', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/:partyId/playlist', requireAuth, requireHost, sendIndex)
     app.get('/host/parties/:partyId', requireAuth, requireHost, sendIndex)
@@ -258,6 +294,7 @@ export function createApp(options = {}) {
     app.get('/admin/parties/:partyId', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin/parties', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin/settings', requireAuth, requireSuperAdmin, sendIndex)
+    app.get('/admin/password-reset-requests', requireAuth, requireSuperAdmin, sendIndex)
     app.get('/admin', requireAuth, requireSuperAdmin, sendIndex)
     app.get(/.+/, (req, res) => {
       if (path.extname(req.path)) {

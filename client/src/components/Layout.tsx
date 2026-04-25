@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/AuthContext'
+import { getAvatarOptionByKey } from '@/lib/avatarOptions'
 import { PageShell, PageShellContent } from '@/components/ui'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -13,9 +14,14 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout() {
   const { user, logout, ready } = useAuth()
+  const nav = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
-  const isSuperAdmin = ready && user?.role === 'super_admin'
+  const isSignedIn = ready && !!user
+  const isSuperAdmin = user?.role === 'super_admin'
+  const isHost = user?.role === 'host'
+  const avatarLetter = (user?.displayName || user?.email || '?').trim().slice(0, 1).toUpperCase()
+  const avatar = getAvatarOptionByKey(user?.avatarKey)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -42,63 +48,114 @@ export function Layout() {
             >
               FunSong
             </NavLink>
-            {ready && user && !isSuperAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  void logout()
-                }}
-                className="min-h-11 min-w-[4.5rem] touch-manipulation rounded-full bg-slate-900/30 px-3 text-xs font-extrabold"
-              >
-                Log out
-              </button>
-            )}
-            {isSuperAdmin && (
+            {isSignedIn && (
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
                   onClick={() => setMenuOpen((v) => !v)}
                   className="min-h-11 min-w-[4.5rem] touch-manipulation rounded-full bg-slate-900/30 px-3 text-xs font-extrabold"
-                  aria-label="Open admin menu"
+                  aria-label="Open user menu"
                   aria-expanded={menuOpen}
                 >
                   ☰ Menu
                 </button>
                 {menuOpen && (
-                  <div className="absolute right-0 z-50 mt-2 w-52 rounded-2xl border border-white/20 bg-slate-950/95 p-2 shadow-xl">
+                  <div
+                    data-testid="auth-burger-menu"
+                    className="absolute right-0 z-50 mt-2 w-72 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/20 bg-slate-950/95 p-2 shadow-xl"
+                  >
                     <Link
-                      to="/admin"
+                      to="/account/profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/10"
+                    >
+                      <span
+                        className={[
+                          'inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-black',
+                          avatar?.className || 'bg-fuchsia-500/25 text-fuchsia-100'
+                        ].join(' ')}
+                      >
+                        {avatar?.chip || avatarLetter}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-black text-white/95">
+                          {user?.displayName || 'Your profile'}
+                        </span>
+                        <span className="block truncate text-xs text-white/65">{user?.email || ''}</span>
+                      </span>
+                    </Link>
+                    <Link
+                      to="/my-songs"
                       onClick={() => setMenuOpen(false)}
                       className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
                     >
-                      Dashboard
+                      My Songs
                     </Link>
-                    <Link
-                      to="/admin/songs"
-                      onClick={() => setMenuOpen(false)}
-                      className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
-                    >
-                      Songs
-                    </Link>
-                    <Link
-                      to="/admin/parties"
-                      onClick={() => setMenuOpen(false)}
-                      className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
-                    >
-                      Parties
-                    </Link>
-                    <Link
-                      to="/admin/settings"
-                      onClick={() => setMenuOpen(false)}
-                      className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
-                    >
-                      Settings
-                    </Link>
+                    {isHost && (
+                      <>
+                        <Link
+                          to="/host/dashboard"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Host Dashboard
+                        </Link>
+                        <Link
+                          to="/host/parties/new"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Create Party
+                        </Link>
+                      </>
+                    )}
+                    {isSuperAdmin && (
+                      <>
+                        <Link
+                          to="/admin"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Admin Dashboard
+                        </Link>
+                        <Link
+                          to="/admin/songs"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Songs
+                        </Link>
+                        <Link
+                          to="/admin/parties"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Parties
+                        </Link>
+                        <Link
+                          to="/admin/settings"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Settings
+                        </Link>
+                        <Link
+                          to="/admin/password-reset-requests"
+                          onClick={() => setMenuOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-bold text-white/95 hover:bg-white/10"
+                        >
+                          Password resets
+                        </Link>
+                      </>
+                    )}
                     <button
                       type="button"
+                      data-testid="auth-menu-logout"
                       onClick={() => {
                         setMenuOpen(false)
-                        void logout()
+                        void logout().then(() => {
+                          nav('/', { replace: true })
+                        })
                       }}
                       className="mt-1 block w-full rounded-xl px-3 py-2 text-left text-sm font-bold text-rose-100 hover:bg-rose-500/20"
                     >

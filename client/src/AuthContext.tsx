@@ -13,6 +13,10 @@ export type AuthUser = {
   id: string
   email: string
   displayName: string
+  firstName?: string | null
+  lastName?: string | null
+  phoneNumber?: string | null
+  avatarKey?: string | null
   role: Role
   isActive: boolean
 }
@@ -53,6 +57,10 @@ function parseUser(data: { user: unknown; reason?: string }): AuthUser | null {
     id: String(u.id),
     email: String(u.email),
     displayName: String((u as { displayName?: string }).displayName),
+    firstName: (u as { firstName?: string | null }).firstName ?? null,
+    lastName: (u as { lastName?: string | null }).lastName ?? null,
+    phoneNumber: (u as { phoneNumber?: string | null }).phoneNumber ?? null,
+    avatarKey: (u as { avatarKey?: string | null }).avatarKey ?? null,
     role: (u as { role: Role }).role,
     isActive: (u as { isActive?: boolean }).isActive !== false
   }

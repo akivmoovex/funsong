@@ -99,7 +99,10 @@ function SongCard({
   difficulty,
   tags,
   audioReady,
-  lyricsReady
+  lyricsReady,
+  isFavorite,
+  onToggleFavorite,
+  favoriteBusy
 }: {
   children?: React.ReactNode
   title: string
@@ -107,6 +110,9 @@ function SongCard({
   tags: string[]
   audioReady: boolean
   lyricsReady: boolean
+  isFavorite?: boolean
+  onToggleFavorite?: () => void
+  favoriteBusy?: boolean
 }) {
   return (
     <div
@@ -147,6 +153,16 @@ function SongCard({
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-white/50">No lyrics</span>
           )}
         </div>
+        {onToggleFavorite && (
+          <button
+            type="button"
+            className="mt-2 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-extrabold text-white disabled:opacity-50"
+            onClick={onToggleFavorite}
+            disabled={favoriteBusy}
+          >
+            {favoriteBusy ? 'Saving...' : isFavorite ? '★ Favorited' : '☆ Add to My Songs'}
+          </button>
+        )}
         {children}
       </div>
     </div>
@@ -165,6 +181,8 @@ export function HostPartyPlaylistPage() {
   const [songReqs, setSongReqs] = useState<SongReq[] | null>(null)
   const [maxPlaylistSongs, setMaxPlaylistSongs] = useState<number>(10)
   const [maxGuests, setMaxGuests] = useState<number>(30)
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
+  const [favoriteBusySongId, setFavoriteBusySongId] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [karaoke, setKaraoke] = useState<HostPartyKState | null>(null)
@@ -238,12 +256,46 @@ export function HostPartyPlaylistPage() {
       setAvailableSongs(d.availableSongs ?? [])
       setBotSuggestions(d.botSuggestions ?? [])
       setSuggestions(d.suggestions ?? [])
+      const favResp = await fetch('/api/account/my-songs', { credentials: 'include' })
+      const favBody = (await favResp.json().catch(() => ({}))) as { songs?: Array<{ id: string }> }
+      if (favResp.ok && Array.isArray(favBody.songs)) {
+        setFavoriteIds(new Set(favBody.songs.map((s) => String(s.id))))
+      }
       void loadControl()
       void loadSongRequests()
     } catch {
       setErr('network')
     }
   }, [partyId, loadControl, loadSongRequests, nav])
+
+  async function toggleFavorite(songId: string) {
+    setFavoriteBusySongId(songId)
+    try {
+      if (favoriteIds.has(songId)) {
+        const r = await fetch(`/api/account/my-songs/${encodeURIComponent(songId)}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        })
+        if (r.ok) {
+          setFavoriteIds((prev) => {
+            const out = new Set(prev)
+            out.delete(songId)
+            return out
+          })
+        }
+      } else {
+        const r = await fetch(`/api/account/my-songs/${encodeURIComponent(songId)}`, {
+          method: 'POST',
+          credentials: 'include'
+        })
+        if (r.ok) {
+          setFavoriteIds((prev) => new Set(prev).add(songId))
+        }
+      }
+    } finally {
+      setFavoriteBusySongId(null)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -882,6 +934,9 @@ export function HostPartyPlaylistPage() {
                   tags={p.tags}
                   audioReady={p.audioReady}
                   lyricsReady={p.lyricsReady}
+                  isFavorite={favoriteIds.has(p.id)}
+                  favoriteBusy={favoriteBusySongId === p.id}
+                  onToggleFavorite={() => void toggleFavorite(p.id)}
                 >
                   <div className="mt-2 flex flex-wrap gap-1">
                     <button
@@ -949,6 +1004,9 @@ export function HostPartyPlaylistPage() {
                     tags={s.tags}
                     audioReady={s.audioReady}
                     lyricsReady={s.lyricsReady}
+                    isFavorite={favoriteIds.has(s.id)}
+                    favoriteBusy={favoriteBusySongId === s.id}
+                    onToggleFavorite={() => void toggleFavorite(s.id)}
                   >
                     <p className="mt-2 text-xs font-extrabold text-cyan-200/95">{s.reason}</p>
                     {onList ? (
@@ -988,6 +1046,9 @@ export function HostPartyPlaylistPage() {
                     tags={s.tags}
                     audioReady={s.audioReady}
                     lyricsReady={s.lyricsReady}
+                    isFavorite={favoriteIds.has(s.id)}
+                    favoriteBusy={favoriteBusySongId === s.id}
+                    onToggleFavorite={() => void toggleFavorite(s.id)}
                   >
                     {onList ? (
                       <p className="mt-2 text-xs text-white/50">Already in queue</p>

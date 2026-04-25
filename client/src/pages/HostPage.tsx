@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 type PartyRequestRow = {
   id: string
@@ -25,8 +25,32 @@ function formatWhen(iso: string | null) {
 }
 
 export function HostPage() {
+  const nav = useNavigate()
+  const [search, setSearch] = useSearchParams()
   const [rows, setRows] = useState<PartyRequestRow[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [showSignupSuccess, setShowSignupSuccess] = useState(false)
+
+  useEffect(() => {
+    const flag = search.get('signup')
+    if (flag !== 'success') return
+    const key = 'funsong.signup.success.seen'
+    if (window.sessionStorage.getItem(key) !== '1') {
+      window.sessionStorage.setItem(key, '1')
+      setShowSignupSuccess(true)
+    }
+    const next = new URLSearchParams(search)
+    next.delete('signup')
+    setSearch(next, { replace: true })
+  }, [search, setSearch])
+
+  useEffect(() => {
+    if (!showSignupSuccess) return
+    const t = window.setTimeout(() => {
+      setShowSignupSuccess(false)
+    }, 5000)
+    return () => window.clearTimeout(t)
+  }, [showSignupSuccess])
 
   useEffect(() => {
     let cancel = false
@@ -53,6 +77,44 @@ export function HostPage() {
 
   return (
     <div className="fs-card space-y-4 text-left">
+      {showSignupSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4" role="dialog" aria-modal="true" aria-label="Signup successful dialog">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-emerald-300/40 bg-slate-900/95 p-6 shadow-2xl">
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden
+            >
+              <rect
+                x="1"
+                y="1"
+                width="98"
+                height="98"
+                rx="8"
+                ry="8"
+                className="fs-signup-success-border"
+              />
+            </svg>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSignupSuccess(false)
+                nav('/host/dashboard', { replace: true })
+              }}
+              className="absolute right-3 top-3 rounded-full bg-white/10 px-2 py-1 text-xs font-extrabold text-white/85 hover:bg-white/20"
+              aria-label="Close signup success popup"
+            >
+              ✕
+            </button>
+            <p className="text-sm font-extrabold uppercase tracking-widest text-emerald-200">Signup successful!</p>
+            <h3 className="mt-2 text-2xl font-black text-white">Welcome to FunSong.</h3>
+            <p className="mt-2 text-sm text-white/80">
+              Your host account is ready. This message closes in 5 seconds.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-2xl font-black">Host dashboard</h2>
         <Link

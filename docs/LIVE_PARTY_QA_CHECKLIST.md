@@ -81,3 +81,33 @@ Legend:
 - Verify a pending song request does not block a guest from requesting control.
 - Verify new host party creation does not require manual admin approval.
 - Verify admin legacy review queue is optional/manual, not required for normal host parties.
+
+## 50B-50G Signed-In User QA Scenarios
+
+| # | Scenario | Expected Result | Pass/Fail | Notes |
+|---|---|---|---|---|
+| 61 | New host signs up | Account is created and session starts |  |  |
+| 62 | Signup success popup appears | Dialog shows with 5-second border countdown |  |  |
+| 63 | Popup close behavior | Auto-close after 5s or manual close keeps user on dashboard |  |  |
+| 64 | Authenticated burger menu | Menu appears only when signed in |  |  |
+| 65 | Menu profile item | First row shows avatar chip, display name, and email |  |  |
+| 66 | Profile route open | Profile item navigates to `/account/profile` |  |  |
+| 67 | Profile edit save | First/last/phone/email/avatar persist successfully |  |  |
+| 68 | Profile email uniqueness | Duplicate email update is blocked |  |  |
+| 69 | Profile avatar validation | Invalid avatar key is rejected |  |  |
+| 70 | Password change (wrong current) | Change is rejected |  |  |
+| 71 | Password change (correct current) | Password updates and next login uses new password |  |  |
+| 72 | Logout flow | Logout remains last menu item and returns to homepage |  |  |
+| 73 | My Songs empty state | Friendly empty message shown before favorites |  |  |
+| 74 | Favorite song add | Host can favorite from authenticated song cards |  |  |
+| 75 | Favorite appears in My Songs | Added favorite appears only for current user |  |  |
+| 76 | Practice open | `Play / Practice` opens practice route for favorite |  |  |
+| 77 | Practice karaoke reuse | Existing karaoke audio component is reused (no party socket) |  |  |
+| 78 | Practice lyric modes | 2-line/4-line modes both work |  |  |
+| 79 | Practice language toggle | English/Hindi/Hebrew lyric selection works |  |  |
+| 80 | Favorite remove | Removing favorite updates My Songs list immediately |  |  |
+| 81 | Failed login attempts 1-2 | Forgot-password link remains hidden |  |  |
+| 82 | Failed login attempt 3 | Forgot-password link becomes visible |  |  |
+| 83 | Forgot-password submit | Neutral response always shown (existing/non-existing email) |  |  |
+| 84 | Super admin reset queue | Super admin can open pending password reset requests page |  |  |
+| 85 | Host admin access guard | Host cannot access super-admin pages/APIs |  |  |

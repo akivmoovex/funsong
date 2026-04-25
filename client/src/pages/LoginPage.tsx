@@ -2,6 +2,8 @@ import { FormEvent, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/AuthContext'
 
+const FAILED_LOGIN_KEY = 'funsong.login.failedCount'
+
 export function LoginPage() {
   const { login, user, ready } = useAuth()
   const [search] = useSearchParams()
@@ -10,6 +12,11 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [failedCount, setFailedCount] = useState(() => {
+    const raw = window.sessionStorage.getItem(FAILED_LOGIN_KEY)
+    const n = Number.parseInt(String(raw || '0'), 10)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  })
   const next = search.get('next') || '/'
 
   if (ready && user) {
@@ -31,6 +38,8 @@ export function LoginPage() {
     setBusy(true)
     void login(email, password)
       .then(() => {
+        window.sessionStorage.removeItem(FAILED_LOGIN_KEY)
+        setFailedCount(0)
         if (search.get('next')) {
           void navigate(String(search.get('next') || ''), { replace: true })
         } else {
@@ -39,6 +48,9 @@ export function LoginPage() {
       })
       .catch((c: { message?: string } | string) => {
         const m = typeof c === 'string' ? c : c?.message
+        const nextFailed = failedCount + 1
+        window.sessionStorage.setItem(FAILED_LOGIN_KEY, String(nextFailed))
+        setFailedCount(nextFailed)
         if (m === 'inactive') {
           setErr('This account is inactive. Contact a super admin.')
         } else {
@@ -103,6 +115,14 @@ export function LoginPage() {
           Sign up
         </Link>
       </p>
+      {failedCount >= 3 && (
+        <p className="text-sm text-white/75">
+          Forgot your password?{' '}
+          <Link to="/forgot-password" className="font-bold text-cyan-200 hover:text-cyan-100">
+            Request reset help
+          </Link>
+        </p>
+      )}
       <p className="text-center text-xs text-white/50">
         Session cookie is HTTP-only and SameSite=Lax. For stricter cross-site
         forms, add a server-issued CSRF token later.
