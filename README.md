@@ -92,6 +92,7 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - `client/` — Vite + React + Tailwind; build output in `client/dist/`.
 - `client/public/` — static assets and PWA-related files included in the Vite public dir.
 - [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md) — on-disk MP3 path, permissions, backup, and what not to commit.
+- [docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md) — new Supabase/Postgres: `DATABASE_URL`, `/health/db`, `npm run db:migrate`, verify tables, `SUPER_ADMIN_*`, `npm run db:seed`, first login.
 - [docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md](docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md) — clone/build/migrate/seed/start, env checklist, health checks, first admin/host/guest smokes, rollback, common issues.
 
 ## PWA (Progressive Web App)
@@ -135,6 +136,21 @@ After `npm run build`, open `client/dist/`, or run `npm start` and use DevTools 
 ## Hostinger (Node) — production deployment
 
 **Step-by-step and smoke test checklist:** [docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md](docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md) (env checklist, `GET /health` / `GET /health/db`, first admin, host, guest+QR, rollback, troubleshooting).
+
+**Production database initialization** (new Supabase DB with **no tables**): you must run **`npm run db:migrate`** before the app can use the database, then **`npm run db:seed`** once to create the first **super admin**. Full order (env → health → migrate → verify tables in Supabase → set `SUPER_ADMIN_*` → seed → verify user → log in) is in **[docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md)**. `/health` alone does not create tables; super admin login at **`/login?next=%2Fadmin`** fails if migrations were skipped.
+
+### Production database initialization (summary)
+
+1. Set **`DATABASE_URL`** in **Hostinger → Environment variables** (see Supabase project settings; use `?sslmode=require` as needed). Restart the Node process if required.
+2. Start the app (`npm start`) and confirm **`GET /health/db`** works (`database.ok: true`).
+3. From the **server** app directory, with `DATABASE_URL` in the environment: **`npm run db:migrate`**. Expect **`[funsong] Migrations: completed successfully`** in the log.
+4. In **Supabase → SQL Editor**, list public tables (query in [docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md)) and confirm expected tables (including **`users`**) exist.
+5. Set **`SUPER_ADMIN_EMAIL`**, **`SUPER_ADMIN_PASSWORD`**, **`SUPER_ADMIN_NAME`** in the environment (never commit real values).
+6. Run **`npm run db:seed`**. Expect **`[funsong] Super admin seed: completed successfully`** (passwords are never printed).
+7. In Supabase, run the **`users`** check query from [docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md) to confirm a **`super_admin`** row.
+8. In a browser, open **`/login?next=%2Fadmin`** and sign in with the super admin email and password.
+
+For SQL snippets, troubleshooting, and the exact `package.json` script names, use **[docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md)**.
 
 Use this order on the server (or in CI) after cloning the repo. **In production, `DATABASE_URL`, `SESSION_SECRET`, and `AUDIO_STORAGE_DIR` (absolute) are required** — the process **exits immediately** with a clear `FATAL` message if any is missing or invalid when `NODE_ENV=production` (as set by `npm start`). Details: [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md).
 

@@ -1,6 +1,6 @@
 # Hostinger — deployment and smoke test (FunSong V1)
 
-Use this after each deploy or when validating a new environment. It complements [QA_STAGING_V1.md](QA_STAGING_V1.md) (deeper manual QA) and [AUDIO_STORAGE_RUNBOOK.md](AUDIO_STORAGE_RUNBOOK.md) (on-disk audio).
+Use this after each deploy or when validating a new environment. It complements [PRODUCTION_DB_SETUP.md](PRODUCTION_DB_SETUP.md) (first-time Supabase/Postgres: migrate + super admin seed), [QA_STAGING_V1.md](QA_STAGING_V1.md) (deeper manual QA), and [AUDIO_STORAGE_RUNBOOK.md](AUDIO_STORAGE_RUNBOOK.md) (on-disk audio).
 
 **Prereqs:** Node **20+** (matches `package.json` `engines`), **npm**, **Git**, PostgreSQL reachable from the app (e.g. Supabase or Hostinger DB). **Hostinger may install production `dependencies` only** before the build. **Vite, Tailwind, PWA, TypeScript, and related build packages, plus `react` / `react-dom` / `react-router-dom` for the client bundle, are in `dependencies`** in `package.json` so `npm run build` works after a production-style install. **Test** tooling (e.g. **vitest**, **supertest**) stays in **devDependencies**; use **`npm install --include=dev`** if you need to run `npm test` on the server. **Do not** require `npm audit` to pass in the same step as the production build unless you accept deploys failing on current dev-tooling advisories; use **`npm run audit:security`** separately (see README → **Security audit policy for V1**).
 
@@ -14,8 +14,8 @@ Use this after each deploy or when validating a new environment. It complements 
 | 2 | **Install and build (hPanel Build command)** | `npm install && npm run build` (or `npm ci && npm run build` with a lockfile). Vite and client build packages are in **`dependencies`**, so a production-only **install** still has what `npm run build` needs. If your panel supports it, `npm install --include=dev && npm run build` is fine too (also installs test devDependencies). |
 | 3 | **Environment** | Copy from [.env.example](../.env.example): create `.env` in the app root *or* set the same keys in the Hostinger Node **environment** panel. Never commit real `.env`. |
 | 4 | **If you split #2, build the frontend** | `npm run build` → outputs to `client/dist/`. If the build is skipped, the SPA and static assets **404** in production. |
-| 5 | **Migrations** | `npm run db:migrate` — needs `DATABASE_URL` set. Must succeed with no unhandled `Migration failed`. |
-| 6 | **Super admin (once per env or after DB reset)** | Set `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME` (see .env.example), then `npm run db:seed`. |
+| 5 | **Migrations** | `npm run db:migrate` (alias for `node server/scripts/migrate.mjs`) — needs `DATABASE_URL` set. **Empty Supabase = no users table** until this succeeds. See [PRODUCTION_DB_SETUP.md](PRODUCTION_DB_SETUP.md) for order and table verification. |
+| 6 | **Super admin (once per env or after DB reset)** | Set `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME` in env (see [.env.example](../.env.example)), then `npm run db:seed` (alias for `node server/scripts/seedSuperAdmin.mjs`). If seed says **users table not found**, run **step 5** first. |
 | 7 | **Start / restart the Node app** | `npm start` which runs: `NODE_ENV=production node server/src/index.mjs`. Restart the process after env or code changes (use Hostinger’s Node manager or your process manager). |
 | 8 | **Process manager** | Ensure the app is bound to the public port the reverse proxy uses (default app `PORT` is **3000**; proxy must forward HTTPS → Node). Set `TRUST_PROXY=1` if the proxy terminates TLS. |
 
@@ -155,5 +155,6 @@ cd funsong && npm install && npm run build && npm run db:migrate && npm test
 ## 10. Related links
 
 - [README — Hostinger section](../README.md#hostinger-node--production-deployment)
+- [docs/PRODUCTION_DB_SETUP.md](PRODUCTION_DB_SETUP.md) — first-time database and super admin
 - [docs/AUDIO_STORAGE_RUNBOOK.md](AUDIO_STORAGE_RUNBOOK.md)
 - [docs/QA_STAGING_V1.md](QA_STAGING_V1.md)

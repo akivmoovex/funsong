@@ -18,8 +18,9 @@ async function main() {
     process.exit(1)
   }
   try {
+    console.log('[funsong] Migrations: starting')
     await runMigrationsFromDir(pool, migrationsDir)
-    console.log('Migrations are up to date.')
+    console.log('[funsong] Migrations: completed successfully')
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e)
     console.error('Migration failed:', m)
