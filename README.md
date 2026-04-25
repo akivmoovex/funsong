@@ -112,6 +112,22 @@ After `npm run build`, open `client/dist/`, or run `npm start` and use DevTools 
 | `npm run build` | Vite client production build to `client/dist`   |
 | `npm start`   | `NODE_ENV=production` + `node server/src/index.mjs` |
 | `npm test`    | Vitest (server `/health` + client smoke test)   |
+| `npm run audit:security` | Run `npm audit` only (optional; see **Security audit policy for V1**). **Not** part of `build` or `start`. |
+
+## Security audit policy for V1
+
+- **`npm run build` and `npm start` do not run `npm audit`.** Install and `postinstall` do not run it either. Deployment on Hostinger (or elsewhere) should **succeed** when `npm install` and `npm run build` complete; treat **`npm run audit:security`** as a **separate** security/compliance step, not a gate on shipping the built app.
+- **Current `npm audit` may still report** findings in the **Vite 5** and **Workbox** / **`serialize-javascript`** (terser) **dev and build** dependency chains. These are **tracked build-tooling risks** (e.g. dev server / bundler advisories) and are **not** treated as blockers for a successful production **runtime** until a planned upgrade path is executed. **Runtime** concerns (e.g. Express, Postgres) are addressed on their own; do not confuse bundler advisories with live API exposure without reviewing each advisory.
+- **`npm audit fix --force` is not used in this repo** by default: it can pull **major** versions (e.g. Vite 6) and **break** the PWA build. Upgrades are done in a **controlled** way with tests and a full build.
+- **Planned fix path:** a **controlled migration to Vite 6** (and a compatible **vite-plugin-pwa** / Workbox line) when ready, with full `npm test` and `npm run build` validation. Until then, run **`npm run audit:security`** periodically in CI or locally and **record** any accepted risk for your org’s policy.
+
+### Hostinger: build vs audit
+
+- Use **Node 20+** (see `package.json` `engines`). **Recommended build command** (e.g. in hPanel or deploy script):  
+  `npm install && npm run build`  
+  (use `npm ci` instead of `npm install` in CI when using a fresh clone with a committed lockfile).
+- **Recommended start command:** `npm start` (after env vars and `client/dist` exist).
+- **Do not** add `npm audit` to the same step as the production build or start **unless** your team explicitly wants deploys to **fail** on current dev-tooling advisories. For most teams, run **`npm run audit:security`** on a schedule or in a **non-blocking** job.
 
 ## Hostinger (Node) — production deployment
 

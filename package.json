@@ -13,6 +13,7 @@
     "build": "vite build --config client/vite.config.ts",
     "start": "NODE_ENV=production node server/src/index.mjs",
     "test": "vitest run",
+    "audit:security": "npm audit",
     "db:migrate": "node server/scripts/migrate.mjs",
     "db:seed": "node server/scripts/seedSuperAdmin.mjs"
   },

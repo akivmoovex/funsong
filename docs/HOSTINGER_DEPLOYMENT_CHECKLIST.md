@@ -2,7 +2,7 @@
 
 Use this after each deploy or when validating a new environment. It complements [QA_STAGING_V1.md](QA_STAGING_V1.md) (deeper manual QA) and [AUDIO_STORAGE_RUNBOOK.md](AUDIO_STORAGE_RUNBOOK.md) (on-disk audio).
 
-**Prereqs:** Node **18.18+** (20+ recommended on Hostinger), **npm**, **Git**, PostgreSQL reachable from the app (e.g. Supabase or Hostinger DB). **devDependencies** are required for `npm run build` (Vite lives there).
+**Prereqs:** Node **20+** (matches `package.json` `engines`), **npm**, **Git**, PostgreSQL reachable from the app (e.g. Supabase or Hostinger DB). **devDependencies** are required for `npm run build` (Vite lives there). **Do not** require `npm audit` to pass in the same step as the production build unless you accept deploys failing on current dev-tooling advisories; use **`npm run audit:security`** separately (see README → **Security audit policy for V1**).
 
 ---
 
