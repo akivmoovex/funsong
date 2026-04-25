@@ -1,7 +1,7 @@
 import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getPool } from './db/pool.mjs'
+import { getDbConfigSummary, getPool } from './db/pool.mjs'
 import { makeDbHealthHandler } from './db/health.mjs'
 import { findUserByEmail } from './db/repos/usersRepo.mjs'
 import { buildSession } from './middleware/buildSession.mjs'
@@ -33,7 +33,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const clientDist = path.join(__dirname, '../../client/dist')
 
 export function createApp(options = {}) {
-  const { getPool: getPoolInj = getPool, sessionStore, sessionSecret, sessionMiddleware: prebuiltSession } =
+  const {
+    getPool: getPoolInj = getPool,
+    getDbConfigSummary: getDbConfigSummaryInj = getDbConfigSummary,
+    sessionStore,
+    sessionSecret,
+    sessionMiddleware: prebuiltSession
+  } =
     options
   const app = express()
   if (process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
@@ -88,7 +94,7 @@ export function createApp(options = {}) {
   app.get('/health', (req, res) => {
     res.json({ status: 'ok' })
   })
-  app.get('/health/db', makeDbHealthHandler(getPoolInj))
+  app.get('/health/db', makeDbHealthHandler(getPoolInj, getDbConfigSummaryInj))
   app.get('/api/auth/me', getMe)
   app.use('/api/join', guestJoinApi)
   app.use('/api/party', partyGuestApi)

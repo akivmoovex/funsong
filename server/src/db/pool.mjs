@@ -1,5 +1,5 @@
 import { Pool } from 'pg'
-import { buildPoolConfigFromEnv } from './connectionConfig.mjs'
+import { buildPoolConfigFromEnv, getDbConfigSummaryFromEnv } from './connectionConfig.mjs'
 
 let _pool = null
 
@@ -8,6 +8,10 @@ export function getPool() {
   if (_pool) return _pool
   _pool = new Pool(buildPoolConfigFromEnv(process.env))
   return _pool
+}
+
+export function getDbConfigSummary() {
+  return getDbConfigSummaryFromEnv(process.env)
 }
 
 export function resetPoolForTests() {

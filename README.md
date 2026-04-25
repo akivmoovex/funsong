@@ -14,6 +14,7 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - **Never commit** a real `DATABASE_URL`, `SESSION_SECRET`, or `SUPER_ADMIN_PASSWORD` to GitHub. The repository only ships [`.env.example`](.env.example) with placeholders.
 - **Supabase** — use a PostgreSQL URI and include **`sslmode=require`** in the query string for typical cloud connections. Get the value from the Supabase dashboard (see [Supabase connection string](#supabase-connection-string) below).
 - **Optional SSL override for Hostinger + Supabase pooler edge cases** — if logs show `self-signed certificate in certificate chain`, set `PGSSL_REJECT_UNAUTHORIZED=false` in host env vars. Use this only for that certificate-chain incompatibility; do not remove `sslmode=require`.
+- **Exact env var spelling matters** — use `PGSSL_REJECT_UNAUTHORIZED=false` exactly (all caps, no spaces in key/value). Typos like `pgSSL _Reject_unauthorized` are ignored.
 - **`SESSION_SECRET`** — long, random, and **unique per environment** (generate with a password manager or `openssl rand -base64 48`). Rotating it invalidates existing sessions.
 - **After changing** Hostinger environment variables, **rebuild / redeploy** the Node app in hPanel (or restart the process) so the new values are picked up, then run migrations and smoke checks as needed.
 
@@ -184,7 +185,7 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
 | Variable | Required in production | Notes |
 |----------|------------------------|--------|
 | `DATABASE_URL` | Yes | PostgreSQL URI; `getPool()` returns `null` without it (dev can skip; prod startup fails) |
-| `PGSSL_REJECT_UNAUTHORIZED` | No | Optional SSL troubleshooting switch. Set to `false` only if Supabase/Hostinger shows `self-signed certificate in certificate chain`; keeps `DATABASE_URL` unchanged. |
+| `PGSSL_REJECT_UNAUTHORIZED` | No | Optional SSL troubleshooting switch. Set to `false` only if Supabase/Hostinger shows `self-signed certificate in certificate chain`; keeps `DATABASE_URL` unchanged. **Exact key required: all caps, no spaces.** |
 | `PGSSL_MODE` | No | Optional value `supabase` to force explicit TLS settings while keeping certificate verification enabled by default. |
 | `SESSION_SECRET` | Yes | Long random string for `express-session` |
 | `PORT` | No | Default `3000` |
@@ -200,6 +201,7 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
 - **Rate limit response:** `429` with `{"error":"rate_limited","message":"Too many attempts. Please try again shortly."}` and a `Retry-After` header (seconds). The server does not log request bodies (passwords stay out of logs).
 - Ensure `client/dist` exists before running `npm start` in production (step 3). If the directory is missing, the SPA and static assets will 404 in production.
 - The server **does not** log `DATABASE_URL`, `SESSION_SECRET`, or `SUPER_ADMIN_PASSWORD`.
+- Startup logs include a safe DB SSL diagnostic line (mode + whether the override env key is set), but never credentials.
 
 ### MP3 / audio storage (production)
 

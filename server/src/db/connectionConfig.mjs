@@ -3,8 +3,40 @@ const DEFAULT_POOL_CONFIG = Object.freeze({
   connectionTimeoutMillis: 10_000
 })
 
+function hasNonEmptyString(value) {
+  return Boolean(String(value || '').trim())
+}
+
 function isFalseString(value) {
   return String(value || '').trim().toLowerCase() === 'false'
+}
+
+export function getDbConfigSummaryFromEnv(env = process.env) {
+  const hasDatabaseUrl = hasNonEmptyString(env.DATABASE_URL)
+  const pgsslRejectUnauthorizedEnvSet = hasNonEmptyString(env.PGSSL_REJECT_UNAUTHORIZED)
+
+  if (isFalseString(env.PGSSL_REJECT_UNAUTHORIZED)) {
+    return {
+      hasDatabaseUrl,
+      sslRejectUnauthorized: false,
+      pgsslRejectUnauthorizedEnvSet
+    }
+  }
+
+  const sslMode = String(env.PGSSL_MODE || '').trim().toLowerCase()
+  if (sslMode === 'supabase') {
+    return {
+      hasDatabaseUrl,
+      sslRejectUnauthorized: true,
+      pgsslRejectUnauthorizedEnvSet
+    }
+  }
+
+  return {
+    hasDatabaseUrl,
+    sslRejectUnauthorized: 'default',
+    pgsslRejectUnauthorizedEnvSet
+  }
 }
 
 /**
@@ -26,16 +58,14 @@ export function buildPoolConfigFromEnv(env = process.env) {
     ...DEFAULT_POOL_CONFIG
   }
 
-  if (isFalseString(env.PGSSL_REJECT_UNAUTHORIZED)) {
+  const summary = getDbConfigSummaryFromEnv(env)
+  if (summary.sslRejectUnauthorized === false) {
     poolConfig.ssl = { rejectUnauthorized: false }
     return poolConfig
   }
 
-  const sslMode = String(env.PGSSL_MODE || '').trim().toLowerCase()
-  const isSupabaseMode = sslMode === 'supabase'
-
   // Keep default pg behavior unless explicitly asked for Supabase mode.
-  if (isSupabaseMode) {
+  if (summary.sslRejectUnauthorized === true) {
     poolConfig.ssl = { rejectUnauthorized: true }
   }
 

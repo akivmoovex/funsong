@@ -40,9 +40,13 @@ If that happens:
 
 1. Keep `DATABASE_URL` as the Supabase URI and keep `sslmode=require` in it.
 2. In **Hostinger → Node.js → Environment variables**, set:
-   - `PGSSL_REJECT_UNAUTHORIZED=false`
+   - `PGSSL_REJECT_UNAUTHORIZED=false` (exact spelling, all caps, no spaces)
 3. Redeploy or restart the Node app so the environment change is applied.
-4. Recheck `GET /health/db`, then rerun `npm run db:migrate` / `npm run db:seed` as needed.
+4. Check startup logs for a safe diagnostic line:
+   - `[funsong] DB SSL mode: rejectUnauthorized=false; PGSSL_REJECT_UNAUTHORIZED env set: true`
+5. Recheck `GET /health/db`, then rerun `npm run db:migrate` / `npm run db:seed` as needed.
+
+If the key is misspelled (for example mixed-case or with spaces), override is not applied and SSL stays at default verification behavior.
 
 Use this override only when you hit the certificate-chain error; default behavior keeps certificate verification on.
 
