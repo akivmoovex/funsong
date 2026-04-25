@@ -4,7 +4,7 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 
 ## Requirements
 
-- Node **18.18+** (use **20+** on production hosts such as Hostinger if available)
+- Node **20+** (required for the current `workbox-build` / PWA toolchain; `package.json` `engines` matches this)
 - **npm** (or compatible; scripts assume npm at the repo root)
 
 ## Environment Variables
