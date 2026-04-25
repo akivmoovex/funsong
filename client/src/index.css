@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FunSong: Kahoot-style themes — [data-ui="lobby"] = bright party shell, [data-ui="karaoke"] = dark stage. */
+@layer base {
+  html,
+  body {
+    @apply m-0 min-h-svh antialiased;
+    font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  [data-ui='lobby'] {
+    @apply text-white;
+  }
+
+  [data-ui='karaoke'] {
+    @apply text-slate-100;
+  }
+}
+
+@layer components {
+  /* Devanagari (Hindi) — system fallback to Latin if font blocks */
+  .fs-text-hi {
+    font-family: 'Noto Sans Devanagari', 'Nirmala UI', 'Kohinoor Devanagari', ui-sans-serif, system-ui,
+      sans-serif;
+  }
+
+  /* Hebrew / RTL line — parent should set dir="rtl" for layout */
+  .fs-text-he {
+    font-family: 'Noto Sans Hebrew', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Large lyric line: readable from a phone on a table (~2 m) */
+  .fs-lyric-hero {
+    @apply min-h-[3.5rem] text-3xl font-extrabold leading-snug tracking-tight text-white sm:min-h-[4rem] sm:text-4xl sm:leading-tight md:text-5xl;
+  }
+
+  .fs-lyric-sub {
+    @apply text-sm leading-relaxed text-slate-400 sm:text-base;
+  }
+
+  .fs-lyric-prev {
+    @apply text-sm leading-snug text-slate-500 sm:text-base;
+  }
+}
+
+@layer utilities {
+  @keyframes fs-confetti-fall {
+    0% {
+      transform: translate3d(0, -12vh, 0) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translate3d(var(--fs-dx, 0), 100vh, 0) rotate(720deg);
+      opacity: 0;
+    }
+  }
+
+  .fs-animate-confetti {
+    animation: fs-confetti-fall 2.6s ease-in both;
+  }
+}
+
+@layer components {
+  /* Gradients: lobby (default marketing / waiting room) */
+  .fs-shell-lobby {
+    @apply min-h-svh bg-gradient-to-br from-fuchsia-500 via-violet-600 to-amber-300;
+  }
+  .fs-shell-karaoke {
+    @apply min-h-svh bg-gradient-to-b from-slate-950 via-indigo-950/90 to-slate-950;
+  }
+
+  .fs-card-lobby {
+    @apply rounded-3xl border-2 border-white/25 bg-white/15 p-5 text-left shadow-2xl ring-1 ring-white/20 backdrop-blur-md sm:p-6;
+  }
+  .fs-card-karaoke {
+    @apply rounded-3xl border-2 border-white/10 bg-slate-900/60 p-5 text-left shadow-2xl ring-1 ring-violet-500/20 backdrop-blur-md sm:p-6;
+  }
+  /* Back-compat for pages still using the old class name (lobby glass). */
+  .fs-card {
+    @apply fs-card-lobby;
+  }
+}
+
+@layer components {
+  .fs-button {
+    @apply inline-flex min-h-[3.5rem] min-w-full items-center justify-center touch-manipulation rounded-2xl px-6 text-center text-lg font-extrabold shadow-lg transition will-change-transform active:scale-[0.99] sm:min-w-0;
+  }
+  .fs-button--lime {
+    @apply bg-lime-400 text-slate-900 shadow-lime-900/30 hover:bg-lime-300;
+  }
+  .fs-button--cyan {
+    @apply bg-cyan-400 text-slate-900 shadow-cyan-900/30 hover:bg-cyan-300;
+  }
+  .fs-button--fuchsia {
+    @apply bg-fuchsia-500 text-white shadow-fuchsia-900/30 hover:bg-fuchsia-400;
+  }
+  .fs-button--amber {
+    @apply bg-amber-300 text-slate-900 shadow-amber-900/30 hover:bg-amber-200;
+  }
+}

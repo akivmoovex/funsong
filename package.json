@@ -1,0 +1,55 @@
+{
+  "name": "funsong",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/src/index.mjs",
+    "dev:client": "vite --config client/vite.config.ts",
+    "build": "vite build --config client/vite.config.ts",
+    "start": "NODE_ENV=production node server/src/index.mjs",
+    "test": "vitest run",
+    "db:migrate": "node server/scripts/migrate.mjs",
+    "db:seed": "node server/scripts/seedSuperAdmin.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.0",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "react-qr-code": "^2.0.18",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/supertest": "^6.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "supertest": "^7.0.0",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^0.21.0",
+    "vitest": "^2.1.0"
+  }
+}

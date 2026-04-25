@@ -1,0 +1,86 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { approvePartyRequest } from './src/services/partyRequestApproval.mjs'
+
+vi.mock('./src/services/partyCodes.mjs', () => ({
+  generateUniquePartyCode: vi.fn().mockResolvedValue('PartyCode01'),
+  generateJoinToken: vi.fn().mockReturnValue('jointok-ff')
+}))
+
+const reqId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const hostId = '8c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0d'
+const adminId = '1a2b3c4d-1a2b-1a2b-1a2b-123456789abc'
+
+const pr29 = {
+  id: reqId,
+  host_id: hostId,
+  status: 'pending',
+  party_name: 'Bash',
+  expected_guests: null
+}
+
+const pr15 = { ...pr29, expected_guests: 15 }
+
+function makePool(prRow) {
+  const c = { query: vi.fn(), release: vi.fn() }
+  c.query.mockImplementation((sql, /** @type {any} */ p) => {
+    const s = String(sql)
+    if (s === 'BEGIN' || s.startsWith('BEGIN')) {
+      return Promise.resolve({ rowCount: 0, rows: [] })
+    }
+    if (s.includes('SELECT * FROM party_requests') && s.includes('FOR UPDATE')) {
+      return Promise.resolve({ rowCount: 1, rows: [prRow] })
+    }
+    if (s.includes('SELECT 1 FROM party_sessions WHERE party_request_id')) {
+      return Promise.resolve({ rowCount: 0, rows: [] })
+    }
+    if (s.includes('INSERT INTO party_sessions')) {
+      const cap = p[4]
+      return Promise.resolve({
+        rowCount: 1,
+        rows: [
+          {
+            id: 'ssssssss-ssss-4sss-8sss-ssssssssssss',
+            max_guests: cap
+          }
+        ]
+      })
+    }
+    if (s.includes('UPDATE party_requests') && s.includes("status = 'approved'")) {
+      return Promise.resolve({ rowCount: 1, rows: [{ id: prRow.id }] })
+    }
+    if (s === 'COMMIT' || s.startsWith('COMMIT')) {
+      return Promise.resolve({ rowCount: 0, rows: [] })
+    }
+    if (s === 'ROLLBACK' || s.startsWith('ROLLBACK')) {
+      return Promise.resolve({ rowCount: 0, rows: [] })
+    }
+    return Promise.resolve({ rowCount: 0, rows: [] })
+  })
+  return { connect: async () => c }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('partyRequestApproval (V1 flow: admin approve → session + max_guests)', () => {
+  it('creates session with default max_guests 30 when expected_guests is null (scenario 6)', async () => {
+    const pool = makePool(pr29)
+    const c = await pool.connect()
+    const out = await approvePartyRequest(/** @type {any} */ (pool), reqId, adminId)
+    expect(out.ok).toBe(true)
+    const ins = c.query.mock.calls.find((a) => String(a[0]).includes('INSERT INTO party_sessions'))
+    expect(ins).toBeDefined()
+    const params = /** @type {any} */ (ins[1])
+    expect(params[4]).toBe(30)
+  })
+
+  it('uses expected_guests when in range (e.g. 15)', async () => {
+    const pool = makePool(pr15)
+    const c = await pool.connect()
+    const out = await approvePartyRequest(/** @type {any} */ (pool), reqId, adminId)
+    expect(out.ok).toBe(true)
+    const ins = c.query.mock.calls.find((a) => String(a[0]).includes('INSERT INTO party_sessions'))
+    expect(/** @type {any} */ (ins[1][4])).toBe(15)
+  })
+})
