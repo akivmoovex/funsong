@@ -4,7 +4,12 @@ import session from 'express-session'
 import { io as ioc } from 'socket.io-client'
 import { buildSession } from './src/middleware/buildSession.mjs'
 import { createApp } from './src/app.mjs'
-import { attachPartySocketIo, verifyPartySocketAccess } from './src/socket/partySocket.mjs'
+import {
+  attachPartySocketIo,
+  registerGuestSocketConnection,
+  unregisterGuestSocketConnection,
+  verifyPartySocketAccess
+} from './src/socket/partySocket.mjs'
 
 const SESSION_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const GUEST_ID = 'a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12'
@@ -156,4 +161,14 @@ describe('Socket.IO party room', () => {
       })
     })
   }, 10_000)
+})
+
+describe('guest socket presence tracking', () => {
+  it('duplicate refresh does not clear guest presence while another socket is alive', () => {
+    const gid = 'g-refresh-1'
+    expect(registerGuestSocketConnection(gid)).toBe(1)
+    expect(registerGuestSocketConnection(gid)).toBe(2)
+    expect(unregisterGuestSocketConnection(gid)).toBe(1)
+    expect(unregisterGuestSocketConnection(gid)).toBe(0)
+  })
 })

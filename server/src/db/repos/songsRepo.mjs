@@ -72,6 +72,28 @@ export async function listSongsForPartySelection(p) {
 }
 
 /**
+ * Published + not blocked, with readiness badges for host source panel.
+ * @param {import('pg').Pool|import('pg').PoolClient} p
+ */
+export async function listAvailableSongsForPartyPanel(p) {
+  const q = getDbPool(p)
+  const { rows } = await q.query(
+    `SELECT ${BASE_SELECT},
+       (s.audio_file_url IS NOT NULL OR s.instrumental_audio_path IS NOT NULL) AS audio_ok,
+       EXISTS(SELECT 1 FROM lyric_lines ll WHERE ll.song_id = s.id LIMIT 1) AS lyrics_ok
+     FROM songs s
+     WHERE s.status = 'published'::song_status
+       AND s.rights_status <> 'blocked'::rights_status
+     ORDER BY s.is_default_suggestion DESC NULLS LAST, s.title ASC NULLS LAST`
+  )
+  return rows.map((r) => ({
+    ...mapSongRow(r),
+    audioReady: r.audio_ok === true,
+    lyricsReady: r.lyrics_ok === true
+  }))
+}
+
+/**
  * Suggested songs for host playlist (defaults only).
  * @param {import('pg').Pool|import('pg').PoolClient} p
  */

@@ -268,4 +268,55 @@ describe('buildPartyKaraokeState (mock pool)', () => {
     expect(/** @type {any} */ (st).currentLineText).toBe('Line zero')
     expect(/** @type {any} */ (st).lyricLines?.length).toBe(1)
   })
+
+  it('returns connected guests scoped to the party session', async () => {
+    const pool = {
+      query: vi.fn(async (/** @type {string} */ sql, /** @type {unknown[]} */ params) => {
+        const s = String(sql)
+        if (s.includes('party_sessions') && s.includes('WHERE id = $1::uuid') && s.includes('SELECT *')) {
+          return {
+            rows: [
+              {
+                id: sessionId,
+                status: 'active',
+                party_code: 'XCODE1',
+                playback_status: 'idle',
+                current_line_number: 1,
+                active_song_id: null,
+                active_playlist_item_id: null,
+                current_controller_party_guest_id: null
+              }
+            ]
+          }
+        }
+        if (s.includes('party_guests') && s.includes('count(*)') && s.includes('is_connected = true')) {
+          return { rows: [{ c: 2 }] }
+        }
+        if (
+          s.includes('FROM party_guests') &&
+          s.includes('display_name') &&
+          s.includes('is_connected = true')
+        ) {
+          const sidParam = String(params?.[0] || '')
+          if (sidParam === sessionId) {
+            return {
+              rows: [
+                { id: 'g1', display_name: 'Guest One' },
+                { id: 'g2', display_name: 'Guest Two' }
+              ]
+            }
+          }
+          return { rows: [{ id: 'g999', display_name: 'Other Party Guest' }] }
+        }
+        return { rows: [] }
+      })
+    }
+    const st = await buildPartyKaraokeState(sessionId, /** @type {any} */ (pool), {})
+    expect(st).not.toBeNull()
+    expect(/** @type {any} */ (st).connectedGuestCount).toBe(2)
+    expect(/** @type {any} */ (st).connectedGuests).toEqual([
+      { id: 'g1', displayName: 'Guest One' },
+      { id: 'g2', displayName: 'Guest Two' }
+    ])
+  })
 })

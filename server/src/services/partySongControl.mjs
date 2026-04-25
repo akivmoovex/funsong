@@ -155,6 +155,8 @@ export async function setPartySongPlaybackOp(pool, session, op) {
            active_song_id = NULL,
            active_playlist_item_id = NULL,
            current_line_number = 1,
+           current_controller_party_guest_id = NULL,
+           controller_audio_enabled = FALSE,
            playback_status = 'idle'::playback_status,
            updated_at = now()
          WHERE id = $1::uuid

@@ -3,7 +3,7 @@ import { findGuestByTokenForPartyCode } from '../db/repos/partyGuestsRepo.mjs'
 import { readGuestTokenFromRequest, setGuestTokenCookie, newGuestToken } from '../guest/cookies.mjs'
 import { getJoinPreview, performGuestJoin } from '../services/guestJoin.mjs'
 import { findSessionByPartyCode } from '../db/repos/partySessionsRepo.mjs'
-import { getSongStreamMeta } from '../db/repos/songsRepo.mjs'
+import { getSongStreamMeta, isSongAllowedOnPartyPlaylist } from '../db/repos/songsRepo.mjs'
 import { buildPartyKaraokeState } from '../services/partyKaraokeState.mjs'
 import { streamAudioFileToResponse } from '../audio/streamFile.mjs'
 import * as plRepo from '../db/repos/partyPlaylistItemsRepo.mjs'
@@ -12,6 +12,17 @@ import { emitControlAndPartyState } from '../services/partyRealtime.mjs'
 
 const PC = /^[A-Za-z0-9._-]{4,64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/**
+ * @param {string | null | undefined} itemStatus
+ */
+function mapGuestPlaylistStatus(itemStatus) {
+  const raw = String(itemStatus || 'pending').toLowerCase()
+  if (raw === 'active') return 'active'
+  if (raw === 'finished') return 'completed'
+  if (raw === 'skipped') return 'skipped'
+  return 'queued'
+}
 
 /**
  * @param {{
@@ -277,7 +288,8 @@ export function createPartyGuestRouter(d) {
         {
           sessionId: String(session.id),
           partyGuestId: g.id,
-          songId: songIdToStore
+          songId: songIdToStore,
+          requestKind: 'control'
         },
         pool
       )
@@ -318,6 +330,7 @@ export function createPartyGuestRouter(d) {
         playlist: playlist.map((p) => ({
           playlistItemId: p.playlistItemId,
           position: p.position,
+          status: mapGuestPlaylistStatus(p.itemStatus),
           id: p.id,
           title: p.title,
           difficulty: p.difficulty,
@@ -362,17 +375,31 @@ export function createPartyGuestRouter(d) {
         return res.status(403).json({ error: 'mismatch' })
       }
       const inList = await plRepo.hasSongInSessionPlaylist(session.id, songId, pool)
-      if (!inList) {
-        return res.status(400).json({ error: 'song_not_in_playlist' })
+      const allowed = await isSongAllowedOnPartyPlaylist(songId, pool)
+      if (!allowed) {
+        return res.status(400).json({ error: 'song_not_available' })
+      }
+      if (await crRepo.hasPendingSongRequestForSessionSong(session.id, songId, pool)) {
+        return res.status(409).json({ error: 'song_request_already_pending' })
+      }
+      if (inList || (await crRepo.hasApprovedSongRequestForSessionSong(session.id, songId, pool))) {
+        return res.status(409).json({ error: 'song_already_in_playlist' })
       }
       const row = await crRepo.createRequest(
         {
           sessionId: session.id,
           partyGuestId: g.id,
-          songId
+          songId,
+          requestKind: 'song'
         },
         pool
       )
+      const io = /** @type {import('socket.io').Server | undefined} */ (req.app.get('io'))
+      await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:requested', {
+        requestId: String(row.id),
+        partyGuestId: String(g.id),
+        songId
+      })
       return res.status(201).json({ request: { id: row.id, songId, status: row.status } })
     } catch (e) {
       return next(e)

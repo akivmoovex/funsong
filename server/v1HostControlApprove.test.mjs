@@ -22,7 +22,8 @@ vi.mock('./src/db/repos/partySessionsRepo.mjs', () => ({
 vi.mock('./src/db/repos/controlRequestsRepo.mjs', () => ({
   findById: vi.fn(),
   approveRequestById: vi.fn(),
-  rejectOtherPendingForSession: vi.fn()
+  rejectOtherPendingForSession: vi.fn(),
+  rejectRequestById: vi.fn()
 }))
 vi.mock('./src/services/partyRealtime.mjs', async (importOriginal) => {
   const m = await importOriginal()
@@ -31,7 +32,7 @@ vi.mock('./src/services/partyRealtime.mjs', async (importOriginal) => {
 
 const { findRequestByIdForHost } = prRepo
 const { findSessionById, setCurrentControllerGuest } = sessRepo
-const { findById, approveRequestById, rejectOtherPendingForSession } = crRepo
+const { findById, approveRequestById, rejectOtherPendingForSession, rejectRequestById } = crRepo
 
 const hostUid = '8c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0d'
 const prId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -87,6 +88,7 @@ beforeEach(() => {
   approveRequestById.mockResolvedValue({ id: reqCtrl, party_guest_id: g1 })
   setCurrentControllerGuest.mockResolvedValue({ id: sid })
   rejectOtherPendingForSession.mockResolvedValue(undefined)
+  rejectRequestById.mockResolvedValue({ id: reqCtrl, party_guest_id: g1 })
 })
 
 /**
@@ -107,5 +109,20 @@ describe('POST /api/host/control-requests/:requestId/approve', () => {
       g1,
       expect.anything()
     )
+    expect(rejectOtherPendingForSession).toHaveBeenCalledWith(sid, reqCtrl, expect.anything())
+  })
+})
+
+describe('POST /api/host/control-requests/:requestId/reject', () => {
+  it('returns 200 and does not set controller', async () => {
+    const app = makeApp()
+    app.set('io', { to: () => ({ emit: vi.fn() }) })
+    const agent = request.agent(app)
+    await loginHost(agent)
+    const r = await agent.post(`/api/host/control-requests/${reqCtrl}/reject`).send({})
+    expect(r.status).toBe(200)
+    expect(r.body.ok).toBe(true)
+    expect(rejectRequestById).toHaveBeenCalled()
+    expect(setCurrentControllerGuest).not.toHaveBeenCalled()
   })
 })

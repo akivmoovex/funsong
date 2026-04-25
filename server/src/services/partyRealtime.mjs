@@ -1,4 +1,5 @@
 import { countConnectedGuestsBySessionId } from '../db/repos/partyGuestsRepo.mjs'
+import { listConnectedGuestSummariesBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 import { buildPartyKaraokeState } from './partyKaraokeState.mjs'
 
 /**
@@ -77,12 +78,27 @@ export async function emitLyricsUpdatedAndState(io, getPool, sessionId, action, 
 }
 
 /**
+ * @param {import('socket.io').Server | null | undefined} io
+ * @param {string} sessionId
+ * @param {Record<string, unknown>} [payload]
+ */
+export function emitPartyPlaylistUpdated(io, sessionId, payload = {}) {
+  if (!io) return
+  const room = getPartySocketRoomName(sessionId)
+  io.to(room).emit('playlist:updated', {
+    sessionId: String(sessionId),
+    ...payload
+  })
+}
+
+/**
  * @param {string} sessionId
  * @param {import('pg').Pool | import('pg').PoolClient} pool
  */
 export async function getGuestsUpdatedPayload(sessionId, pool) {
   const c = await countConnectedGuestsBySessionId(sessionId, pool)
-  return { connectedGuestCount: c }
+  const connectedGuests = await listConnectedGuestSummariesBySessionId(sessionId, pool)
+  return { connectedGuestCount: c, connectedGuests }
 }
 
 /**

@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client'
 import { Link, useParams } from 'react-router-dom'
 import { createPartySocket } from '../realtime/partySocket'
 import { pickLineText } from '../lib/lyricText'
+import { karaokeVisibleLineNumbers } from '../lib/lyricPreview'
 import { KaraokeOneDeviceAudio, type KaraokeAudioVariant } from '../components/KaraokeOneDeviceAudio'
 import { PartyCodeQrCard } from '../components/party/PartyCodeQrCard'
 import { SongFinishedConfetti } from '../components/party/SongFinishedConfetti'
@@ -22,11 +23,29 @@ type PartyKState = {
   currentLine?: KaraokeLine | null
   lyricContext?: { previousLine: KaraokeLine | null; nextLine: KaraokeLine | null }
   activeSong?: { id: string; title?: string; audioFileUrl?: string | null } | null
+  lyricLines?: KaraokeLine[]
   controller?: { id: string; displayName: string } | null
   controllerAudioEnabled?: boolean
   playbackStatus?: string
   connectedGuestCount?: number
+  connectedGuests?: Array<{ id: string; displayName: string }>
   sessionStatus?: string
+}
+
+type LobbyPlaylistItem = {
+  playlistItemId: string
+  position: number
+  status?: 'queued' | 'active' | 'completed' | 'skipped'
+  title: string
+}
+
+function initialsFromName(name: string): string {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return '?'
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
 }
 
 export function PartyLobbyPage() {
@@ -47,6 +66,9 @@ export function PartyLobbyPage() {
   const socketRef = useRef<Socket | null>(null)
   const [partySocket, setPartySocket] = useState<Socket | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [partyTitle, setPartyTitle] = useState<string | null>(null)
+  const [playlistPreview, setPlaylistPreview] = useState<LobbyPlaylistItem[]>([])
+  const [isLandscapePhone, setIsLandscapePhone] = useState(false)
 
   useEffect(() => {
     if (!partyCode || !PC.test(partyCode)) {
@@ -56,6 +78,15 @@ export function PartyLobbyPage() {
     let cancel = false
     void (async () => {
       try {
+        const previewResp = await fetch(`/api/join/${encodeURIComponent(partyCode)}`, {
+          credentials: 'include'
+        })
+        const previewBody = (await previewResp.json().catch(() => ({}))) as {
+          preview?: { partyTitle?: string | null }
+        }
+        if (!cancel) {
+          setPartyTitle(previewBody.preview?.partyTitle || null)
+        }
         const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}`, {
           credentials: 'include'
         })
@@ -101,6 +132,23 @@ export function PartyLobbyPage() {
   }, [partyCode])
 
   useEffect(() => {
+    if (!partyCode || !PC.test(partyCode)) return
+    let cancel = false
+    void (async () => {
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`, {
+        credentials: 'include'
+      })
+      const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[] }
+      if (!cancel && r.ok) {
+        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist.slice(0, 5) : [])
+      }
+    })()
+    return () => {
+      cancel = true
+    }
+  }, [partyCode])
+
+  useEffect(() => {
     if (!data?.partySessionId) return
     const socket = createPartySocket({
       partySessionId: data.partySessionId,
@@ -133,8 +181,35 @@ export function PartyLobbyPage() {
     const onPartyEnded = () => {
       setPartyClosed(true)
     }
+    const onGuestsUpdated = (payload: {
+      connectedGuestCount?: number
+      connectedGuests?: Array<{ id: string; displayName: string }>
+    }) => {
+      setK((prev) => ({
+        ...(prev || {}),
+        connectedGuestCount:
+          typeof payload.connectedGuestCount === 'number'
+            ? payload.connectedGuestCount
+            : prev?.connectedGuestCount,
+        connectedGuests: Array.isArray(payload.connectedGuests)
+          ? payload.connectedGuests
+          : prev?.connectedGuests
+      }))
+    }
+    const onPlaylistUpdated = async () => {
+      if (!partyCode) return
+      const r = await fetch(`/api/party/${encodeURIComponent(partyCode)}/playlist`, {
+        credentials: 'include'
+      })
+      const d = (await r.json().catch(() => ({}))) as { playlist?: LobbyPlaylistItem[] }
+      if (r.ok) {
+        setPlaylistPreview(Array.isArray(d.playlist) ? d.playlist.slice(0, 5) : [])
+      }
+    }
     socket.on('song:finished', onSongFinished)
     socket.on('party:ended', onPartyEnded)
+    socket.on('guests:updated', onGuestsUpdated)
+    socket.on('playlist:updated', onPlaylistUpdated)
     return () => {
       socketRef.current = null
       setPartySocket(null)
@@ -142,9 +217,19 @@ export function PartyLobbyPage() {
       socket.off('lyrics:error', onLyricErr)
       socket.off('song:finished', onSongFinished)
       socket.off('party:ended', onPartyEnded)
+      socket.off('guests:updated', onGuestsUpdated)
+      socket.off('playlist:updated', onPlaylistUpdated)
       socket.close()
     }
-  }, [data?.partySessionId])
+  }, [data?.partySessionId, partyCode])
+
+  useEffect(() => {
+    const q = window.matchMedia('(max-width: 1024px) and (orientation: landscape)')
+    const onChange = () => setIsLandscapePhone(q.matches)
+    onChange()
+    q.addEventListener('change', onChange)
+    return () => q.removeEventListener('change', onChange)
+  }, [])
 
   if (!partyCode || !PC.test(partyCode)) {
     return <p className="text-sm text-white/80">Invalid code.</p>
@@ -229,14 +314,6 @@ export function PartyLobbyPage() {
     }
   }
 
-  const prevText = k?.lyricContext?.previousLine
-    ? pickLineText(k.lyricContext.previousLine, data.languagePreference)
-    : null
-  const curText = k?.currentLine ? pickLineText(k.currentLine, data.languagePreference) : null
-  const nextText = k?.lyricContext?.nextLine
-    ? pickLineText(k.lyricContext.nextLine, data.languagePreference)
-    : null
-
   const hasSong = !!k?.activeSong?.id
 
   const audioVariant: KaraokeAudioVariant = (() => {
@@ -257,6 +334,22 @@ export function PartyLobbyPage() {
     | 'hebrew'
   const lineDir: 'rtl' | 'ltr' = lineLang === 'hebrew' ? 'rtl' : 'ltr'
   const lineFont = lineLang === 'hindi' ? 'fs-text-hi' : lineLang === 'hebrew' ? 'fs-text-he' : ''
+  const lines = Array.isArray(k?.lyricLines) ? k.lyricLines : []
+  const lineMap = new Map(lines.map((l) => [l.lineNumber, l]))
+  const visibleNums =
+    typeof k?.currentLineNumber === 'number'
+      ? karaokeVisibleLineNumbers(
+          lines.map((l) => l.lineNumber),
+          k.currentLineNumber
+        )
+      : []
+  const lyricRows = visibleNums
+    .map((n) => ({
+      lineNumber: n,
+      text: pickLineText(lineMap.get(n), lineLang),
+      isCurrent: n === k?.currentLineNumber
+    }))
+    .filter((r) => !!r.text)
 
   return (
     <div className="flex min-h-[72dvh] flex-col gap-4 pb-8 text-left sm:min-h-[75dvh] sm:gap-5 md:gap-6">
@@ -265,10 +358,13 @@ export function PartyLobbyPage() {
       <div className="fs-card-lobby flex flex-col gap-3 rounded-3xl p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
+            <p className="text-xs font-extrabold uppercase tracking-widest text-white/65">Live party lobby</p>
             <h1 className="text-2xl font-black leading-tight tracking-tight sm:text-3xl md:text-4xl">
-              Hi, {data.displayName}!
+              {partyTitle || `Party ${partyCode}`}
             </h1>
-            <p className="mt-1 text-sm text-white/85">You’re in the room</p>
+            <p className="mt-1 text-sm text-white/85">
+              You joined as <span className="font-black text-cyan-200">{data.displayName}</span>
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2" aria-label="Room stats">
             <StatusPill kind="sync" className="text-sm">
@@ -281,10 +377,32 @@ export function PartyLobbyPage() {
             )}
           </div>
         </div>
+        {Array.isArray(k?.connectedGuests) && k.connectedGuests.length > 0 && (
+          <div>
+            <div className="mb-2 text-xs font-extrabold uppercase tracking-wide text-white/60">
+              Connected singers
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {k.connectedGuests.map((g) => (
+                <div
+                  key={g.id}
+                  className="animate-[popIn_.2s_ease-out] rounded-2xl border border-white/20 bg-white/5 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/30 text-xs font-black text-cyan-100 ring-1 ring-cyan-200/30">
+                      {initialsFromName(g.displayName)}
+                    </span>
+                    <span className="truncate text-sm font-bold text-white">{g.displayName}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {partyCode && <PartyCodeQrCard partyCode={partyCode} />}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-white/85">
-            <span className="font-extrabold">Lyrics: </span>
+            <span className="font-extrabold">Language: </span>
             <span className="font-black capitalize text-amber-100">{lineLang}</span>
           </p>
           {partyCode && (
@@ -321,7 +439,15 @@ export function PartyLobbyPage() {
             />
           </div>
         )}
-        {hasSong ? (
+        {isLandscapePhone ? (
+          <div className="space-y-3 text-center" role="status" aria-label="Rotate to portrait">
+            <p className="text-4xl" aria-hidden>
+              📱
+            </p>
+            <h2 className="text-2xl font-black text-slate-100">Please rotate your phone to portrait mode.</h2>
+            <p className="text-base text-slate-400">Lyrics are optimized for portrait viewing.</p>
+          </div>
+        ) : hasSong ? (
           <>
             {k?.activeSong?.title && (
               <p className="text-center text-xs font-extrabold uppercase tracking-widest text-fuchsia-300/90 sm:text-left">
@@ -336,46 +462,70 @@ export function PartyLobbyPage() {
                 {k.activeSong.title}
               </h2>
             ) : null}
-            {prevText != null && prevText !== '' ? (
-              <p
-                className={`fs-lyric-prev line-clamp-3 text-center sm:text-left ${lineFont}`.trim()}
-                dir={lineDir}
-              >
-                {prevText}
-              </p>
-            ) : null}
-            <p
-              className={`fs-lyric-hero text-balance text-center sm:text-left ${lineFont}`.trim()}
-              dir={lineDir}
-              aria-live="polite"
-              role="status"
-            >
-              {curText && curText !== '' ? curText : '—'}
-            </p>
-            {nextText != null && nextText !== '' ? (
-              <p
-                className={`fs-lyric-sub text-center sm:text-left ${lineFont}`.trim()}
-                dir={lineDir}
-              >
-                Next: {nextText}
-              </p>
-            ) : hasSong && (!nextText || nextText === '') ? (
-              <p className="fs-lyric-sub text-center text-slate-500 sm:text-left">
-                Last line — &quot;Next line&quot; ends the song
-              </p>
-            ) : null}
+            {lyricRows.length > 0 ? (
+              <div className="space-y-2" aria-live="polite" role="status">
+                {lyricRows.slice(0, 4).map((row) =>
+                  row.isCurrent ? (
+                    <p
+                      key={row.lineNumber}
+                      className={`fs-lyric-hero text-balance text-center sm:text-left ${lineFont}`.trim()}
+                      dir={lineDir}
+                    >
+                      {row.text}
+                    </p>
+                  ) : (
+                    <p
+                      key={row.lineNumber}
+                      className={`fs-lyric-sub text-balance text-center sm:text-left ${lineFont}`.trim()}
+                      dir={lineDir}
+                    >
+                      {row.text}
+                    </p>
+                  )
+                )}
+              </div>
+            ) : (
+              <p className="fs-lyric-hero text-center sm:text-left">—</p>
+            )}
           </>
         ) : (
           <div className="space-y-3 text-center sm:text-left" role="status" aria-label="No active song">
             <p className="text-4xl" aria-hidden>
-              🎤
+              ⏳
             </p>
-            <h2 className="text-2xl font-black text-slate-100 sm:text-3xl">Stage is open</h2>
+            <h2 className="text-2xl font-black text-slate-100 sm:text-3xl">Waiting for the host</h2>
             <p className="max-w-prose text-base text-slate-400">
-              There’s no song on the main screen yet. The host can start one from the host view — or hang
-              tight and chat!
+              The party hasn&apos;t started karaoke yet. As soon as the host starts a song, everyone will see it
+              here.
             </p>
           </div>
+        )}
+      </div>
+
+      <div className="fs-card-lobby rounded-3xl border-2 border-cyan-300/35 bg-gradient-to-br from-cyan-500/20 to-fuchsia-500/15 p-4 sm:p-5">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-lg font-black text-cyan-100">Playlist preview</h3>
+          <span className="text-xs font-bold text-white/70">Live</span>
+        </div>
+        {playlistPreview.length === 0 ? (
+          <p className="text-sm text-white/80">No songs in queue yet. The host is building the setlist.</p>
+        ) : (
+          <ul className="space-y-2">
+            {playlistPreview.map((item) => (
+              <li
+                key={item.playlistItemId}
+                className="rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-sm"
+              >
+                <span className="text-xs font-black text-cyan-200">#{item.position + 1}</span>{' '}
+                <span className="font-bold text-white">{item.title}</span>
+                {item.status ? (
+                  <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-bold capitalize text-white/90">
+                    {item.status}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
@@ -385,30 +535,26 @@ export function PartyLobbyPage() {
         </p>
       )}
 
-      {isController && hasSong && (
-        <div
-          className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:gap-4"
-          role="group"
-          aria-label="Karaoke line controls"
-        >
-          <LyricActionButton
-            label="Previous line"
-            onPress={() => socketRef.current?.emit('lyrics:previous')}
-          />
-          <LyricActionButton
-            label="Next line"
-            primary
-            onPress={() => socketRef.current?.emit('lyrics:next')}
-          />
-          <LyricActionButton
-            label="Restart"
-            onPress={() => socketRef.current?.emit('lyrics:restart')}
-          />
-          <LyricActionButton
-            label="End song"
-            danger
-            onPress={() => socketRef.current?.emit('lyrics:finish')}
-          />
+      {isController && hasSong && !isLandscapePhone && (
+        <div role="group" aria-label="Karaoke line controls">
+          <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-md items-end justify-between px-4">
+            <LyricActionButton
+              label="← Previous"
+              onPress={() => socketRef.current?.emit('lyrics:previous')}
+            />
+            <LyricActionButton
+              label="Next →"
+              primary
+              onPress={() => socketRef.current?.emit('lyrics:next')}
+            />
+          </div>
+          <div className="fixed inset-x-0 bottom-20 z-40 mx-auto flex max-w-xs justify-center px-4">
+            <LyricActionButton
+              label="Finish Song"
+              danger
+              onPress={() => socketRef.current?.emit('lyrics:finish')}
+            />
+          </div>
         </div>
       )}
 
@@ -451,7 +597,7 @@ function LyricActionButton({
     <button
       type="button"
       className={[
-        'min-h-[52px] rounded-2xl px-3 py-3 text-sm font-bold shadow-lg active:scale-[0.99]',
+        'min-h-[52px] rounded-2xl px-4 py-3 text-sm font-bold shadow-lg active:scale-[0.99]',
         primary
           ? 'bg-fuchsia-500 text-white ring-2 ring-fuchsia-300/40'
           : danger

@@ -16,6 +16,26 @@ export async function listGuestsBySessionId(sessionId, p) {
 }
 
 /**
+ * @param {string} sessionId
+ * @param {import('pg').Pool | import('pg').PoolClient} p
+ */
+export async function listConnectedGuestSummariesBySessionId(sessionId, p) {
+  const q = getDbPool(p)
+  const { rows } = await q.query(
+    `SELECT id, display_name
+     FROM party_guests
+     WHERE session_id = $1::uuid
+       AND is_connected = true
+     ORDER BY created_at, id`,
+    [sessionId]
+  )
+  return rows.map((r) => ({
+    id: String(r.id),
+    displayName: String(r.display_name || 'Guest')
+  }))
+}
+
+/**
  * @param {import('pg').Pool | import('pg').PoolClient} p
  */
 export async function countConnectedGuestsBySessionId(sessionId, p) {

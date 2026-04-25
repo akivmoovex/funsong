@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { listPendingRequestsForAdmin } from '../db/repos/partyRequestsRepo.mjs'
+import { listConnectedGuestSummariesBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 import {
   disableSessionById,
   findSessionRowForAdminById,
@@ -35,7 +36,7 @@ function mapPending(r) {
 /**
  * @param {object} r
  */
-function mapSession(r) {
+function mapSession(r, connectedGuests = []) {
   if (!r) {
     return null
   }
@@ -54,6 +55,7 @@ function mapSession(r) {
     requestStatus: r.request_status,
     createdAt: r.created_at,
     connectedGuestCount: Number(r.connected_guests ?? 0),
+    connectedGuests,
     activeSong:
       activeId && r.active_song_title
         ? { id: String(activeId), title: String(r.active_song_title) }
@@ -189,7 +191,8 @@ export function createAdminPartiesRouter(d) {
       if (!row) {
         return res.status(404).json({ error: 'not_found' })
       }
-      return res.json({ party: mapSession(row) })
+      const connectedGuests = await listConnectedGuestSummariesBySessionId(String(row.id), pool)
+      return res.json({ party: mapSession(row, connectedGuests) })
     } catch (e) {
       return next(e)
     }

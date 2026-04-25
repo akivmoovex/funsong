@@ -52,6 +52,9 @@ function makeControlRequestPool() {
       if (s.includes('FROM control_requests') && s.includes('party_guest_id = $2::uuid') && s.includes('pending')) {
         return { rowCount: 0 }
       }
+      if (s.includes('SELECT 1 FROM party_playlist_items WHERE session_id = $1::uuid AND song_id = $2::uuid')) {
+        return { rowCount: 1, rows: [{ '?column?': 1 }] }
+      }
       if (s.includes('INSERT INTO control_requests')) {
         return {
           rows: [
@@ -82,6 +85,21 @@ describe('hasPendingControlForGuest', () => {
     )
     expect(h).toBe(true)
   })
+
+  it('scopes pending check to control request kind', async () => {
+    const pool = {
+      query: async (sql) => {
+        expect(String(sql)).toContain("request_kind = 'control'")
+        return { rowCount: 0 }
+      }
+    }
+    const h = await hasPendingControlForGuest(
+      'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10',
+      /** @type {any} */ (pool)
+    )
+    expect(h).toBe(false)
+  })
 })
 
 describe('POST /api/party/:code/request-control', () => {
@@ -110,6 +128,21 @@ describe('POST /api/party/:code/request-control', () => {
       .set('Cookie', [`fs_guest=${GUEST_TOK}`])
       .send({})
     expect(r.status).toBe(401)
+  })
+
+  it('creates a pending request for selected playlist song', async () => {
+    const app = createApp({
+      sessionStore: new session.MemoryStore(),
+      getPool: () => makeControlRequestPool()
+    })
+    app.set('io', { to: () => ({ emit: vi.fn() }) })
+    const r = await request(app)
+      .post(`/api/party/${encodeURIComponent(CODE)}/request-control`)
+      .set('Cookie', [`fs_guest=${GUEST_TOK}`])
+      .send({ songId: SONG_ID })
+    expect(r.status).toBe(201)
+    expect(r.body.ok).toBe(true)
+    expect(r.body.request?.songId).toBe(SONG_ID)
   })
 })
 

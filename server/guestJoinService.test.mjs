@@ -143,4 +143,34 @@ describe('performGuestJoin (V1: guest join + 31st cap)', () => {
     }
     expect(r.error).toBe('not_joinable')
   })
+
+  it('two guests with different names can join same party session', async () => {
+    countConnectedGuestsBySessionId.mockResolvedValue(0)
+    createGuest
+      .mockResolvedValueOnce({ id: 'g1', display_name: 'Alice' })
+      .mockResolvedValueOnce({ id: 'g2', display_name: 'Bob' })
+    const pool = makePoolForJoin()
+    const r1 = await performGuestJoin(/** @type {any} */ (pool), code, {
+      displayName: 'Alice',
+      language: 'english',
+      guestToken: 'tok-1'
+    })
+    const r2 = await performGuestJoin(/** @type {any} */ (pool), code, {
+      displayName: 'Bob',
+      language: 'english',
+      guestToken: 'tok-2'
+    })
+    expect(r1.ok).toBe(true)
+    expect(r2.ok).toBe(true)
+    expect(createGuest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ displayName: 'Alice' }),
+      expect.anything()
+    )
+    expect(createGuest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ displayName: 'Bob' }),
+      expect.anything()
+    )
+  })
 })

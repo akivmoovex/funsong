@@ -155,6 +155,25 @@ export async function setControllerAudioEnabled(sessionId, enabled, p) {
 }
 
 /**
+ * Marks approved session as active. No-op for ended/disabled/already_active.
+ * @param {string} sessionId
+ * @param {import('pg').Pool|import('pg').PoolClient} p
+ */
+export async function startPartySession(sessionId, p) {
+  const q = getDbPool(p)
+  const { rows } = await q.query(
+    `UPDATE party_sessions
+     SET status = 'active'::party_session_status,
+         updated_at = now()
+     WHERE id = $1::uuid
+       AND status = 'approved'::party_session_status
+     RETURNING *`,
+    [sessionId]
+  )
+  return rows[0] || null
+}
+
+/**
  * Host ends the party: status `ended`, clears playback/controller, sets `ended_at`.
  * @param {string} partyRequestId
  * @param {string} hostUserId

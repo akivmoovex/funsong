@@ -3,6 +3,7 @@ import { findRequestByIdForHost } from '../db/repos/partyRequestsRepo.mjs'
 import {
   endPartySessionForHost,
   findSessionByPartyRequestId,
+  startPartySession,
   setCurrentControllerGuest,
   setControllerAudioEnabled
 } from '../db/repos/partySessionsRepo.mjs'
@@ -11,6 +12,7 @@ import * as plRepo from '../db/repos/partyPlaylistItemsRepo.mjs'
 import * as crRepo from '../db/repos/controlRequestsRepo.mjs'
 import {
   isSongAllowedOnPartyPlaylist,
+  listAvailableSongsForPartyPanel,
   listDefaultSuggestionSongs
 } from '../db/repos/songsRepo.mjs'
 import { buildBotSuggestions } from '../services/partySongBotSuggestions.mjs'
@@ -18,6 +20,7 @@ import { startPartySong, setPartySongPlaybackOp } from '../services/partySongCon
 import {
   emitControlAndPartyState,
   emitHostPartyEnded,
+  emitPartyPlaylistUpdated,
   emitPartyKaraokeAndState,
   getPartySocketRoomName
 } from '../services/partyRealtime.mjs'
@@ -37,6 +40,39 @@ function getSocketIo(/** @type {any} */ req) {
  */
 export function createHostPartyPlaylistRouter(d) {
   const r = Router({ mergeParams: true })
+
+  r.post('/:partyId/start-party', async (req, res, next) => {
+    try {
+      const out = await resolveHostSession(req, d)
+      if (out.error) {
+        return res.status(out.error).json({ error: out.body?.error || 'forbidden' })
+      }
+      const { pool, session } = out
+      const current = String(session.status || '')
+      if (current === 'active') {
+        return res.json({ ok: true, session: { id: String(session.id), status: 'active' } })
+      }
+      if (current !== 'approved') {
+        return res.status(400).json({ error: 'invalid_state' })
+      }
+      const updated = await startPartySession(String(session.id), pool)
+      if (!updated) {
+        return res.status(409).json({ error: 'already_started' })
+      }
+      const io = getSocketIo(req)
+      const state = await buildPartyKaraokeState(String(session.id), pool, { role: 'host' })
+      if (io && state) {
+        io.to(getPartySocketRoomName(String(session.id))).emit('party:state', state)
+      }
+      return res.json({
+        ok: true,
+        session: { id: String(updated.id), status: String(updated.status) },
+        state: state || null
+      })
+    } catch (e) {
+      return next(e)
+    }
+  })
 
   r.post('/:partyId/start-song', async (req, res, next) => {
     try {
@@ -230,6 +266,9 @@ export function createHostPartyPlaylistRouter(d) {
           partyGuestId: String(/** @type {any} */ (r).party_guest_id),
           guestDisplayName: String(/** @type {any} */ (r).guest_display_name),
           songId: /** @type {any} */ (r).song_id ? String(/** @type {any} */ (r).song_id) : null,
+          songTitle: /** @type {any} */ (r).song_title
+            ? String(/** @type {any} */ (r).song_title)
+            : null,
           createdAt: /** @type {any} */ (r).created_at
         }))
       })
@@ -292,9 +331,144 @@ export function createHostPartyPlaylistRouter(d) {
       } finally {
         c.release()
       }
+      try {
+        await appendEvent(
+          {
+            sessionId,
+            eventType: 'control_taken_back',
+            payload: {
+              source: 'host',
+              previousPartyGuestId: prev
+            }
+          },
+          pool
+        )
+      } catch {
+        // ignore log failure
+      }
       const io = getSocketIo(req)
       await emitControlAndPartyState(io, d.getPool, sessionId, 'control:revoked', {
         previousPartyGuestId: prev
+      })
+      return res.json({ ok: true })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.get('/:partyId/song-requests', async (req, res, next) => {
+    try {
+      const out = await resolveHostSession(req, d)
+      if (out.error) {
+        return res.status(out.error).json({ error: out.body?.error || 'forbidden' })
+      }
+      const { session, pool } = out
+      const rows = await crRepo.listPendingSongRequestsBySessionId(String(session.id), pool)
+      return res.json({
+        requests: rows.map((r) => ({
+          id: String(r.id),
+          partyGuestId: String(r.party_guest_id),
+          guestDisplayName: String(r.guest_display_name || 'Guest'),
+          songId: String(r.song_id),
+          songTitle: String(r.song_title || 'Unknown'),
+          status: String(r.status),
+          createdAt: r.created_at
+        }))
+      })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.post('/:partyId/song-requests/:requestId/approve', async (req, res, next) => {
+    try {
+      const out = await resolveHostSession(req, d)
+      if (out.error) {
+        return res.status(out.error).json({ error: out.body?.error || 'forbidden' })
+      }
+      const requestId = String(req.params.requestId || '')
+      if (!UUID.test(requestId)) {
+        return res.status(400).json({ error: 'invalid_request_id' })
+      }
+      const { pool, session } = out
+      const c = await pool.connect()
+      let reqRow
+      try {
+        await c.query('BEGIN')
+        reqRow = await crRepo.approveSongRequestById(requestId, String(req.funsongUser?.id || ''), c)
+        if (!reqRow) {
+          await c.query('ROLLBACK')
+          return res.status(409).json({ error: 'not_pending' })
+        }
+        if (String(reqRow.session_id) !== String(session.id)) {
+          await c.query('ROLLBACK')
+          return res.status(403).json({ error: 'mismatch' })
+        }
+        const songId = String(reqRow.song_id || '')
+        if (!songId || !UUID.test(songId)) {
+          await c.query('ROLLBACK')
+          return res.status(400).json({ error: 'invalid_song_id' })
+        }
+        if (!(await plRepo.hasSongInSessionPlaylist(String(session.id), songId, c))) {
+          const pos = await plRepo.nextPositionAtEnd(String(session.id), c)
+          await plRepo.addSongAtPosition(
+            {
+              sessionId: String(session.id),
+              songId,
+              position: pos
+            },
+            c
+          )
+        }
+        await c.query('COMMIT')
+      } catch (e) {
+        try {
+          await c.query('ROLLBACK')
+        } catch {
+          // ignore
+        }
+        throw e
+      } finally {
+        c.release()
+      }
+      const io = getSocketIo(req)
+      emitPartyPlaylistUpdated(io, String(session.id), { source: 'song_request:approved' })
+      await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:approved', {
+        requestId
+      })
+      return res.json({ ok: true })
+    } catch (e) {
+      return next(e)
+    }
+  })
+
+  r.post('/:partyId/song-requests/:requestId/reject', async (req, res, next) => {
+    try {
+      const out = await resolveHostSession(req, d)
+      if (out.error) {
+        return res.status(out.error).json({ error: out.body?.error || 'forbidden' })
+      }
+      const requestId = String(req.params.requestId || '')
+      if (!UUID.test(requestId)) {
+        return res.status(400).json({ error: 'invalid_request_id' })
+      }
+      const { pool, session } = out
+      const c = await pool.connect()
+      let reqRow
+      try {
+        reqRow = await crRepo.rejectSongRequestById(requestId, c)
+      } finally {
+        c.release()
+      }
+      if (!reqRow) {
+        return res.status(409).json({ error: 'not_pending' })
+      }
+      if (String(reqRow.session_id) !== String(session.id)) {
+        return res.status(403).json({ error: 'mismatch' })
+      }
+      const io = getSocketIo(req)
+      await emitControlAndPartyState(io, d.getPool, String(session.id), 'control:rejected', {
+        requestId
       })
       return res.json({ ok: true })
     } catch (e) {
@@ -309,8 +483,9 @@ export function createHostPartyPlaylistRouter(d) {
         return res.status(out.error).json({ error: out.body?.error || 'forbidden' })
       }
       const { pool, session, partyRequest } = out
-      const [playlist, suggestions, botSuggestions] = await Promise.all([
+      const [playlist, availableSongs, suggestions, botSuggestions] = await Promise.all([
         plRepo.listPlaylistWithSongsForSession(session.id, pool),
+        listAvailableSongsForPartyPanel(pool),
         listDefaultSuggestionSongs(pool),
         buildBotSuggestions(pool, String(session.id), {
           description: partyRequest?.description,
@@ -321,6 +496,14 @@ export function createHostPartyPlaylistRouter(d) {
       return res.json({
         partySessionId: String(session.id),
         playlist,
+        availableSongs: availableSongs.map((s) => ({
+          id: s.id,
+          title: s.title,
+          difficulty: s.difficulty,
+          tags: s.tags,
+          audioReady: s.audioReady,
+          lyricsReady: s.lyricsReady
+        })),
         botSuggestions,
         suggestions: suggestions.map((s) => ({
           id: s.id,
@@ -382,6 +565,7 @@ export function createHostPartyPlaylistRouter(d) {
           return res.status(500).json({ error: 'insert_failed' })
         }
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:add' })
         return res.status(201).json({ playlist, added: row.id })
       } catch (e) {
         try {
@@ -421,6 +605,7 @@ export function createHostPartyPlaylistRouter(d) {
         await plRepo.compactPositions(session.id, c)
         await c.query('COMMIT')
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:remove' })
         return res.json({ playlist })
       } catch (e) {
         try {
@@ -463,6 +648,7 @@ export function createHostPartyPlaylistRouter(d) {
         }
         await c.query('COMMIT')
         const playlist = await plRepo.listPlaylistWithSongsForSession(session.id, pool)
+        emitPartyPlaylistUpdated(getSocketIo(req), String(session.id), { source: 'host:reorder' })
         return res.json({ playlist })
       } catch (e) {
         try {

@@ -22,6 +22,32 @@ import { sessionAllowsLivePartyControl } from '../services/partySessionPolicy.mj
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+/** @type {Map<string, number>} */
+const guestSocketConnectionCounts = new Map()
+
+/**
+ * @param {string} guestId
+ */
+export function registerGuestSocketConnection(guestId) {
+  const next = (guestSocketConnectionCounts.get(guestId) || 0) + 1
+  guestSocketConnectionCounts.set(guestId, next)
+  return next
+}
+
+/**
+ * @param {string} guestId
+ */
+export function unregisterGuestSocketConnection(guestId) {
+  const cur = guestSocketConnectionCounts.get(guestId) || 0
+  const next = Math.max(0, cur - 1)
+  if (next === 0) {
+    guestSocketConnectionCounts.delete(guestId)
+  } else {
+    guestSocketConnectionCounts.set(guestId, next)
+  }
+  return next
+}
+
 /**
  * @param {import('express').RequestHandler} sessionMiddleware
  */
@@ -249,6 +275,7 @@ export function attachPartySocketIo(httpServer, opts) {
       return
     }
     if (role === 'guest' && socket.data.partyGuestId) {
+      registerGuestSocketConnection(String(socket.data.partyGuestId))
       await updatePartyGuestConnectionState(socket.data.partyGuestId, { isConnected: true }, pool)
       try {
         await appendEvent(
@@ -456,17 +483,24 @@ export function attachPartySocketIo(httpServer, opts) {
       ;(async () => {
         if (role === 'guest' && guestId) {
           try {
-            await updatePartyGuestConnectionState(/** @type {string} */ (guestId), { isConnected: false }, pool)
-            await appendEvent(
-              {
-                sessionId,
-                eventType: 'realtime:guest_disconnect',
-                payload: { source: 'socket' },
-                createdByPartyGuestId: /** @type {string} */ (guestId)
-              },
-              pool
-            )
-            await emitPartyGuestsUpdated(io, sessionId, getPool)
+            const remaining = unregisterGuestSocketConnection(String(guestId))
+            if (remaining === 0) {
+              await updatePartyGuestConnectionState(
+                /** @type {string} */ (guestId),
+                { isConnected: false },
+                pool
+              )
+              await appendEvent(
+                {
+                  sessionId,
+                  eventType: 'realtime:guest_disconnect',
+                  payload: { source: 'socket' },
+                  createdByPartyGuestId: /** @type {string} */ (guestId)
+                },
+                pool
+              )
+              await emitPartyGuestsUpdated(io, sessionId, getPool)
+            }
           } catch (e) {
             console.error(e)
           }

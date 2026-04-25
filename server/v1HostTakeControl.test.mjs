@@ -6,6 +6,7 @@ import { findUserByEmail, findUserById } from './src/db/repos/usersRepo.mjs'
 import * as prRepo from './src/db/repos/partyRequestsRepo.mjs'
 import * as sessRepo from './src/db/repos/partySessionsRepo.mjs'
 import * as crRepo from './src/db/repos/controlRequestsRepo.mjs'
+import * as partyEventsRepo from './src/db/repos/partyEventsRepo.mjs'
 import { createApp } from './src/app.mjs'
 
 vi.mock('./src/db/repos/usersRepo.mjs', () => ({
@@ -22,6 +23,9 @@ vi.mock('./src/db/repos/partySessionsRepo.mjs', () => ({
 vi.mock('./src/db/repos/controlRequestsRepo.mjs', () => ({
   rejectAllPendingForSession: vi.fn()
 }))
+vi.mock('./src/db/repos/partyEventsRepo.mjs', () => ({
+  appendEvent: vi.fn()
+}))
 vi.mock('./src/services/partyRealtime.mjs', async (importOriginal) => {
   const m = await importOriginal()
   return { ...m, emitControlAndPartyState: vi.fn() }
@@ -30,6 +34,7 @@ vi.mock('./src/services/partyRealtime.mjs', async (importOriginal) => {
 const { findRequestByIdForHost } = prRepo
 const { findSessionByPartyRequestId, setCurrentControllerGuest } = sessRepo
 const { rejectAllPendingForSession } = crRepo
+const { appendEvent } = partyEventsRepo
 
 const hostUid = '8c4e0d6e-7c5d-4a5a-8c5a-0d6e4c0d6e0d'
 const prId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -79,6 +84,7 @@ beforeEach(() => {
   })
   setCurrentControllerGuest.mockResolvedValue({ id: sid })
   rejectAllPendingForSession.mockResolvedValue(undefined)
+  appendEvent.mockResolvedValue({ id: 'evt1' })
 })
 
 /**
@@ -95,5 +101,18 @@ describe('POST /api/host/parties/:partyId/take-control', () => {
     expect(r.body.ok).toBe(true)
     expect(setCurrentControllerGuest).toHaveBeenCalledWith(sid, null, expect.anything())
     expect(rejectAllPendingForSession).toHaveBeenCalled()
+    expect(appendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: sid,
+        eventType: 'control_taken_back'
+      }),
+      expect.anything()
+    )
+  })
+
+  it('rejects non-host caller', async () => {
+    const app = makeApp()
+    const r = await request(app).post(`/api/host/parties/${prId}/take-control`).send({})
+    expect(r.status).toBe(401)
   })
 })

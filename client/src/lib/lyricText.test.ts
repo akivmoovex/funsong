@@ -11,4 +11,9 @@ describe('pickLineText', () => {
   it('returns null for empty line', () => {
     expect(pickLineText(null, 'english')).toBeNull()
   })
+
+  it('uses hebrew text and falls back to english', () => {
+    expect(pickLineText({ textEnglish: 'hello', textHebrew: 'שלום' }, 'hebrew')).toBe('שלום')
+    expect(pickLineText({ textEnglish: 'hello', textHebrew: '' }, 'hebrew')).toBe('hello')
+  })
 })

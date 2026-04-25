@@ -3,6 +3,7 @@ import { findSongById } from '../db/repos/songsRepo.mjs'
 import { listLinesForSong } from '../db/repos/lyricLinesRepo.mjs'
 import { findGuestById } from '../db/repos/partyGuestsRepo.mjs'
 import { countConnectedGuestsBySessionId } from '../db/repos/partyGuestsRepo.mjs'
+import { listConnectedGuestSummariesBySessionId } from '../db/repos/partyGuestsRepo.mjs'
 
 /**
  * @param {{ textEnglish?: string; textHindi?: string; textHebrew?: string } | null} line
@@ -37,6 +38,7 @@ export async function buildPartyKaraokeState(sessionId, pool, opt = {}) {
     return null
   }
   const gu = await countConnectedGuestsBySessionId(sessionId, pool)
+  const connectedGuests = await listConnectedGuestSummariesBySessionId(sessionId, pool)
   const activeSongId = session.active_song_id
   let activeSong = null
   let lyricLines = /** @type {any[]} */ ([])
@@ -85,6 +87,7 @@ export async function buildPartyKaraokeState(sessionId, pool, opt = {}) {
     role: role || undefined,
     sessionStatus: String(session.status),
     connectedGuestCount: gu,
+    connectedGuests,
     controllerAudioEnabled: cAudio === true,
     playbackStatus: String(session.playback_status),
     currentLineNumber: currentNo,

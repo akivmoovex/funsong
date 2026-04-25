@@ -29,6 +29,7 @@ type Sugg = {
   isDefaultSuggestion: boolean
 }
 
+type AvailableSong = Sugg
 type BotSugg = Sugg & { reason: string }
 
 type ControlReq = {
@@ -36,6 +37,17 @@ type ControlReq = {
   partyGuestId: string
   guestDisplayName: string
   songId: string | null
+  songTitle?: string | null
+  createdAt: string
+}
+
+type SongReq = {
+  id: string
+  partyGuestId: string
+  guestDisplayName: string
+  songId: string
+  songTitle: string
+  status: string
   createdAt: string
 }
 
@@ -53,8 +65,18 @@ type HostPartyKState = {
   playbackStatus?: string
   controllerAudioEnabled?: boolean
   connectedGuestCount?: number
+  connectedGuests?: Array<{ id: string; displayName: string }>
   sessionStatus?: string
   controller?: { id: string; displayName: string } | null
+}
+
+function initialsFromName(name: string): string {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return '?'
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
 }
 
 function difficultyStyle(d: string | null): string {
@@ -136,9 +158,11 @@ export function HostPartyPlaylistPage() {
   const nav = useNavigate()
   const [partySessionId, setPartySessionId] = useState<string | null>(null)
   const [playlist, setPlaylist] = useState<PlItem[] | null>(null)
+  const [availableSongs, setAvailableSongs] = useState<AvailableSong[] | null>(null)
   const [suggestions, setSuggestions] = useState<Sugg[] | null>(null)
   const [botSuggestions, setBotSuggestions] = useState<BotSugg[] | null>(null)
   const [controlReqs, setControlReqs] = useState<ControlReq[] | null>(null)
+  const [songReqs, setSongReqs] = useState<SongReq[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [karaoke, setKaraoke] = useState<HostPartyKState | null>(null)
@@ -161,6 +185,21 @@ export function HostPartyPlaylistPage() {
     }
   }, [partyId])
 
+  const loadSongRequests = useCallback(async () => {
+    if (!partyId || !UUID_RE.test(partyId)) return
+    try {
+      const r = await fetch(`/api/host/parties/${partyId}/song-requests`, { credentials: 'include' })
+      const d = (await r.json().catch(() => ({}))) as {
+        requests?: SongReq[]
+      }
+      if (r.ok) {
+        setSongReqs(d.requests ?? [])
+      }
+    } catch {
+      // best effort
+    }
+  }, [partyId])
+
   const load = useCallback(async () => {
     if (!partyId || !UUID_RE.test(partyId)) return
     setErr(null)
@@ -169,6 +208,7 @@ export function HostPartyPlaylistPage() {
       const d = (await r.json().catch(() => ({}))) as {
         partySessionId?: string
         playlist?: PlItem[]
+        availableSongs?: AvailableSong[]
         botSuggestions?: BotSugg[]
         suggestions?: Sugg[]
         error?: string
@@ -185,13 +225,15 @@ export function HostPartyPlaylistPage() {
         setPartySessionId(d.partySessionId)
       }
       setPlaylist(d.playlist ?? [])
+      setAvailableSongs(d.availableSongs ?? [])
       setBotSuggestions(d.botSuggestions ?? [])
       setSuggestions(d.suggestions ?? [])
       void loadControl()
+      void loadSongRequests()
     } catch {
       setErr('network')
     }
-  }, [partyId, loadControl, nav])
+  }, [partyId, loadControl, loadSongRequests, nav])
 
   useEffect(() => {
     void load()
@@ -209,6 +251,7 @@ export function HostPartyPlaylistPage() {
     hostSocketRef.current = socket
     const onReq = () => {
       void loadControl()
+      void loadSongRequests()
     }
     const onPartyState = (s: HostPartyKState) => {
       setKaraoke({
@@ -218,6 +261,7 @@ export function HostPartyPlaylistPage() {
         playbackStatus: s.playbackStatus,
         controllerAudioEnabled: s.controllerAudioEnabled,
         connectedGuestCount: s.connectedGuestCount,
+        connectedGuests: s.connectedGuests,
         sessionStatus: s.sessionStatus,
         controller: s.controller
       })
@@ -227,17 +271,34 @@ export function HostPartyPlaylistPage() {
         nav(`/host/parties/${partyId}`, { replace: true })
       }
     }
+    const onGuestsUpdated = (payload: {
+      connectedGuestCount?: number
+      connectedGuests?: Array<{ id: string; displayName: string }>
+    }) => {
+      setKaraoke((prev) => ({
+        ...(prev || {}),
+        connectedGuestCount:
+          typeof payload.connectedGuestCount === 'number'
+            ? payload.connectedGuestCount
+            : prev?.connectedGuestCount,
+        connectedGuests: Array.isArray(payload.connectedGuests)
+          ? payload.connectedGuests
+          : prev?.connectedGuests
+      }))
+    }
     socket.on('control:requested', onReq)
     socket.on('party:state', onPartyState)
     socket.on('party:ended', onPartyEnded)
+    socket.on('guests:updated', onGuestsUpdated)
     return () => {
       hostSocketRef.current = null
       socket.off('control:requested', onReq)
       socket.off('party:state', onPartyState)
       socket.off('party:ended', onPartyEnded)
+      socket.off('guests:updated', onGuestsUpdated)
       socket.close()
     }
-  }, [partySessionId, loadControl, partyId, nav])
+  }, [partySessionId, loadControl, loadSongRequests, partyId, nav])
 
   async function addSong(songId: string) {
     if (!partyId) return
@@ -337,6 +398,49 @@ export function HostPartyPlaylistPage() {
     }
   }
 
+  async function approveSongRequest(requestId: string) {
+    if (!partyId) return
+    setBusy('sar' + requestId)
+    setErr(null)
+    try {
+      const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/approve`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (!r.ok) {
+        setErr('song_request_approve')
+        return
+      }
+      void loadSongRequests()
+      void load()
+    } catch {
+      setErr('network')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function rejectSongRequest(requestId: string) {
+    if (!partyId) return
+    setBusy('srr' + requestId)
+    setErr(null)
+    try {
+      const r = await fetch(`/api/host/parties/${partyId}/song-requests/${requestId}/reject`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (!r.ok) {
+        setErr('song_request_reject')
+        return
+      }
+      void loadSongRequests()
+    } catch {
+      setErr('network')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function takeControl() {
     if (!partyId) return
     setBusy('take')
@@ -400,6 +504,29 @@ export function HostPartyPlaylistPage() {
         return
       }
       nav(`/host/parties/${partyId}`, { replace: true })
+    } catch {
+      setErr('network')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function startParty() {
+    if (!partyId) return
+    setBusy('startparty')
+    setErr(null)
+    try {
+      const r = await fetch(`/api/host/parties/${encodeURIComponent(partyId)}/start-party`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const d = (await r.json().catch(() => ({}))) as { error?: string }
+      if (!r.ok) {
+        setErr(d.error || 'start_party')
+        return
+      }
+      void load()
     } catch {
       setErr('network')
     } finally {
@@ -498,8 +625,11 @@ export function HostPartyPlaylistPage() {
           {err === 'reorder' && 'Could not save order. Restored from server.'}
           {err === 'control_approve' && 'Could not approve control request.'}
           {err === 'control_reject' && 'Could not reject control request.'}
+          {err === 'song_request_approve' && 'Could not approve song request.'}
+          {err === 'song_request_reject' && 'Could not reject song request.'}
           {err === 'take_control' && 'Could not take back control.'}
           {err === 'ca_toggle' && 'Could not update guest audio mode.'}
+          {err === 'start_party' && 'Could not start party.'}
           {err === 'end_party' && 'Could not end the party. Try again.'}
           {err === 'party_already_ended' && 'This party was already ended.'}
           {err === 'network' && 'Network error.'}
@@ -520,16 +650,31 @@ export function HostPartyPlaylistPage() {
       )}
 
       <div className="rounded-2xl border border-amber-400/30 bg-amber-500/5 p-4 text-left sm:p-5">
+        {(karaoke?.sessionStatus || 'approved') !== 'active' && (
+          <div className="mb-3 rounded-2xl border border-cyan-300/40 bg-cyan-500/10 p-3">
+            <p className="text-sm text-cyan-100">Party is waiting. Start now to switch room state to active.</p>
+            <button
+              type="button"
+              className="mt-2 min-h-10 rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-extrabold text-white disabled:opacity-60"
+              disabled={!!busy}
+              onClick={() => void startParty()}
+            >
+              Start party
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-lg font-black text-amber-100">Controller requests</h3>
-          <button
-            type="button"
-            className="rounded-2xl border border-white/25 px-3 py-1.5 text-xs font-bold text-amber-100"
-            disabled={!!busy}
-            onClick={() => void takeControl()}
-          >
-            Take back control
-          </button>
+          {karaoke?.controller && (
+            <button
+              type="button"
+              className="rounded-2xl border border-white/25 px-3 py-1.5 text-xs font-bold text-amber-100"
+              disabled={!!busy}
+              onClick={() => void takeControl()}
+            >
+              Take back control
+            </button>
+          )}
         </div>
         {controlReqs && controlReqs.length === 0 && (
           <p className="mt-1 text-sm text-white/60">No pending requests.</p>
@@ -543,7 +688,9 @@ export function HostPartyPlaylistPage() {
               >
                 <div>
                   <div className="font-bold text-white">{cr.guestDisplayName}</div>
-                  <div className="text-xs text-white/60">Song: {cr.songId || '—'}</div>
+                  <div className="text-xs text-white/60">
+                    Song: {cr.songTitle || cr.songId || 'Active song'}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <button
@@ -559,6 +706,45 @@ export function HostPartyPlaylistPage() {
                     className="rounded-lg border border-rose-400/40 bg-rose-500/20 px-2 py-1 text-xs text-rose-100"
                     disabled={!!busy}
                     onClick={() => void rejectControl(cr.id)}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-left sm:p-5">
+        <h3 className="text-lg font-black text-cyan-100">Song requests</h3>
+        {songReqs && songReqs.length === 0 && (
+          <p className="mt-1 text-sm text-white/60">No pending song requests.</p>
+        )}
+        {songReqs && songReqs.length > 0 && (
+          <ul className="mt-2 space-y-2">
+            {songReqs.map((sr) => (
+              <li
+                key={sr.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm"
+              >
+                <div>
+                  <div className="font-bold text-white">{sr.songTitle}</div>
+                  <div className="text-xs text-white/70">Requested by {sr.guestDisplayName}</div>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-emerald-500/40 px-2 py-1 text-xs font-bold text-white"
+                    disabled={!!busy}
+                    onClick={() => void approveSongRequest(sr.id)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-rose-400/40 bg-rose-500/20 px-2 py-1 text-xs text-rose-100"
+                    disabled={!!busy}
+                    onClick={() => void rejectSongRequest(sr.id)}
                   >
                     Reject
                   </button>
@@ -633,6 +819,23 @@ export function HostPartyPlaylistPage() {
               End song
             </button>
           </div>
+        {Array.isArray(karaoke?.connectedGuests) && karaoke.connectedGuests.length > 0 && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+            {karaoke.connectedGuests.map((g) => (
+              <div
+                key={g.id}
+                className="animate-[popIn_.2s_ease-out] rounded-2xl border border-white/20 bg-white/5 px-3 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-500/30 text-xs font-black text-fuchsia-100 ring-1 ring-fuchsia-200/30">
+                    {initialsFromName(g.displayName)}
+                  </span>
+                  <span className="truncate text-sm font-bold text-white">{g.displayName}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         </div>
       )}
       <div>
@@ -691,7 +894,7 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div>
-        <h3 className="text-lg font-black text-amber-100">FunSong Bot Suggestions</h3>
+        <h3 className="text-lg font-black text-amber-100">Suggested Songs</h3>
         <p className="text-xs text-white/60">
           Picks from your approved library only (no web scraping). Uses tags, default picks, and your party
           request text when it helps. Complete MP3 + lyrics required.
@@ -746,14 +949,14 @@ export function HostPartyPlaylistPage() {
         )}
       </div>
       <div>
-        <h3 className="text-lg font-black text-amber-100">Default suggestions</h3>
-        <p className="text-xs text-white/60">Published, not blocked, and marked as default in the song library.</p>
-        {suggestions && suggestions.length === 0 && (
-          <p className="mt-2 text-sm text-white/70">No default suggestions in the library.</p>
+        <h3 className="text-lg font-black text-amber-100">Available Songs</h3>
+        <p className="text-xs text-white/60">Published and unblocked songs available to add.</p>
+        {availableSongs && availableSongs.length === 0 && (
+          <p className="mt-2 text-sm text-white/70">No available songs in the library.</p>
         )}
-        {suggestions && suggestions.length > 0 && (
+        {availableSongs && availableSongs.length > 0 && (
           <ul className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
-            {suggestions.map((s) => {
+            {availableSongs.map((s) => {
               const onList = playlist?.some((p) => p.id === s.id)
               return (
                 <li key={s.id}>

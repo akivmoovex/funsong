@@ -16,8 +16,18 @@ type Party = {
   requestStatus: string
   createdAt: string
   connectedGuestCount: number
+  connectedGuests?: Array<{ id: string; displayName: string }>
   activeSong: { id: string; title: string } | null
   currentController: { id: string; displayName: string } | null
+}
+
+function initialsFromName(name: string): string {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return '?'
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
 }
 
 export function AdminPartyDetailPage() {
@@ -130,6 +140,23 @@ export function AdminPartyDetailPage() {
               <p>
                 {row.connectedGuestCount} online · max {row.maxGuests}
               </p>
+              {Array.isArray(row.connectedGuests) && row.connectedGuests.length > 0 && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {row.connectedGuests.map((g) => (
+                    <div
+                      key={g.id}
+                      className="animate-[popIn_.2s_ease-out] rounded-xl border border-white/20 bg-white/5 px-2 py-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/30 text-[10px] font-black text-cyan-100 ring-1 ring-cyan-200/30">
+                          {initialsFromName(g.displayName)}
+                        </span>
+                        <span className="truncate text-xs font-bold text-white">{g.displayName}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <span className="text-xs font-extrabold uppercase text-white/50">Join code</span>

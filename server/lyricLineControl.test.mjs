@@ -135,6 +135,25 @@ describe('applyLyricLineAction (mocked DB)', () => {
     expect(partySongControl.setPartySongPlaybackOp).toHaveBeenCalled()
   })
 
+  it('moves previous and does not go below first line', async () => {
+    const sessionAtFirst = {
+      id: SESSION_ID,
+      status: 'active',
+      active_song_id: SONG,
+      active_playlist_item_id: 'e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10',
+      current_line_number: 1
+    }
+    partySessionsRepo.findSessionById.mockReset()
+    partySessionsRepo.updateSessionCurrentLine.mockReset()
+    partySessionsRepo.findSessionById.mockResolvedValue(/** @type {any} */ (sessionAtFirst))
+    partySessionsRepo.updateSessionCurrentLine.mockResolvedValue(/** @type {any} */ (sessionAtFirst))
+    const r = await applyLyricLineAction(pool, SESSION_ID, 'previous', {})
+    expect(r.ok).toBe(true)
+    if (!r.ok || r.finished) return
+    expect(r.currentLineNumber).toBe(1)
+    expect(partySessionsRepo.updateSessionCurrentLine).toHaveBeenCalledWith(SESSION_ID, 1, pool)
+  })
+
   it('rejects lyric control when session is disabled', async () => {
     partySessionsRepo.findSessionById.mockResolvedValue(
       /** @type {any} */ ({
