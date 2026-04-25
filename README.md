@@ -123,13 +123,14 @@ After `npm run build`, open `client/dist/`, or run `npm start` and use DevTools 
 
 ### Hostinger: build vs audit
 
-- Use **Node 20+** (see `package.json` `engines`). **Vite, Tailwind, PWA, and TypeScript tooling are build-time devDependencies** — the production server does not embed them, but `npm run build` **must** be able to run the local Vite binary under `node_modules/.bin/`.
-- **hPanel "Build" command (recommended):** use an install that **includes devDependencies**, then build:  
-  `npm install --include=dev && npm run build`  
-  For a clean install from a committed lockfile:  
-  `npm ci --include=dev && npm run build`  
-- **hPanel "Start" command (unchanged):** `npm start` — this sets `NODE_ENV=production` for the Node process. **After** the client is built, runtime needs only `dependencies` from the same `npm install`; do **not** set `NODE_ENV=production` during `npm install` on the host if that causes `npm` to **omit devDependencies** (you would get missing `vite` and a failed build).
-- **Do not** run `npm install --omit=dev` (or a production-only install) **before** `npm run build` — the build will fail with `sh: line 1: vite: command not found` because `vite` is not installed. **Do not** add `npm audit` to the same step as the production build or start **unless** your team explicitly wants deploys to **fail** on current dev-tooling advisories. For most teams, run **`npm run audit:security`** on a schedule or in a **non-blocking** job.
+- Use **Node 20+** (see `package.json` `engines`). **Hostinger may run a production-style install** (`npm install` with dev dependencies omitted) **before** `npm run build`. For compatibility, **Vite** (`vite`), **@vitejs/plugin-react**, **vite-plugin-pwa**, **TypeScript**, **Tailwind** (`tailwindcss`, `postcss`, `autoprefixer`), and the **client** packages **react**, **react-dom**, and **react-router-dom** are listed in **`dependencies`** in `package.json` so they are still installed when devDependencies are skipped. The production Node server does not load Vite at runtime; this placement only enlarges the install on disk. **Test-only** tools (e.g. **vitest**, **supertest**, **jsdom**, testing libraries) stay in **devDependencies**.
+- **hPanel "Build" command** — the following works even when the platform only installs production `dependencies`:  
+  `npm install && npm run build`  
+  For a clean install with a lockfile:  
+  `npm ci && npm run build`  
+- **Where your host allows it**, you can still use **`npm install --include=dev && npm run build`** (or `npm ci --include=dev && npm run build`) to install devDependencies as well (e.g. if you run tests in the same environment). **Do not** set `NODE_ENV=production` during `npm install` in a way that **breaks** the install you intend (some setups skip devDependencies when `NODE_ENV=production` is set for the install step).
+- **hPanel "Start" command (unchanged):** `npm start` — this sets `NODE_ENV=production` for the Node process.
+- **Do not** add `npm audit` to the same step as the production build or start **unless** your team explicitly wants deploys to **fail** on current dev-tooling advisories. For most teams, run **`npm run audit:security`** on a schedule or in a **non-blocking** job.
 
 ## Hostinger (Node) — production deployment
 
@@ -137,13 +138,13 @@ After `npm run build`, open `client/dist/`, or run `npm start` and use DevTools 
 
 Use this order on the server (or in CI) after cloning the repo. **In production, `DATABASE_URL`, `SESSION_SECRET`, and `AUDIO_STORAGE_DIR` (absolute) are required** — the process **exits immediately** with a clear `FATAL` message if any is missing or invalid when `NODE_ENV=production` (as set by `npm start`). Details: [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md).
 
-1. **Install dependencies** (from the repo root) **including devDependencies** — Vite, `@vitejs/plugin-react`, `vite-plugin-pwa`, `tailwindcss`, `postcss`, `autoprefixer`, and `typescript` are listed under `devDependencies` in `package.json` and are required to produce `client/dist/`. On Hostinger, a **single build step** that matches the panel is:
+1. **Install and build the client** (from the repo root) — build tooling and client libraries needed for `vite build` are in **`dependencies`** so a **production-only** install (see **Hostinger: build vs audit** above) can still run `npm run build`. A typical **hPanel** one-liner is:
    ```bash
-   npm install --include=dev && npm run build
+   npm install && npm run build
    ```
-   (equivalently on a clean clone with `package-lock.json` committed: `npm ci --include=dev && npm run build`.) If you install and build in two steps, the install must still be **`npm install --include=dev`** (or a full `npm install` with devDependencies not omitted) before `npm run build`. Plain `npm install` on a default machine also works; the failure mode is a **production-only** install (see **Hostinger** box above) that skips devDependencies.
+   With a committed lockfile on a clean tree: `npm ci && npm run build`. If your platform supports it, **`npm install --include=dev && npm run build`** remains a good way to also install test and type devDependencies.
 2. **Copy environment** — set variables in a `.env` file or the host panel (see **Required in production** below and `.env.example`). Do not log secrets; seed and migrate scripts only print high-level success or `Migration failed: <message>`.
-3. **If you did not use the one-liner in step 1, build the client** — output goes to `client/dist/`; Express serves it when `npm start` runs:
+3. **If you split install and build in step 1, run the client build** — output goes to `client/dist/`; Express serves it when `npm start` runs:
    ```bash
    npm run build
    ```
