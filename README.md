@@ -95,6 +95,7 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - `client/public/` — static assets and PWA-related files included in the Vite public dir.
 - [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md) — on-disk MP3 path, permissions, backup, and what not to commit.
 - [docs/PRODUCTION_DB_SETUP.md](docs/PRODUCTION_DB_SETUP.md) — new Supabase/Postgres: `DATABASE_URL`, `/health/db`, `npm run db:migrate`, verify tables, `SUPER_ADMIN_*`, `npm run db:seed`, first login.
+- [docs/ADMIN_PASSWORD_RESET.md](docs/ADMIN_PASSWORD_RESET.md) — safe super admin password reset flow when the seeded password is unknown/outdated.
 - [docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md](docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md) — clone/build/migrate/seed/start, env checklist, health checks, first admin/host/guest smokes, rollback, common issues.
 
 ## PWA (Progressive Web App)
@@ -173,6 +174,10 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
 5. **Seed the super admin** (once per environment, or to rotate credentials) — set `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `SUPER_ADMIN_NAME`, then:
    ```bash
    npm run db:seed
+   ```
+   If the account exists but password is unknown/outdated, reset it safely:
+   ```bash
+   npm run db:reset-super-admin-password
    ```
 6. **Start the server** — uses `package.json` `start` script (`NODE_ENV=production` + `node server/src/index.mjs`), binds `0.0.0.0`, listens on `PORT` (default `3000`):
    ```bash

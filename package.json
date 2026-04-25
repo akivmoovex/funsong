@@ -15,7 +15,8 @@
     "test": "vitest run",
     "audit:security": "npm audit",
     "db:migrate": "node server/scripts/migrate.mjs",
-    "db:seed": "node server/scripts/seedSuperAdmin.mjs"
+    "db:seed": "node server/scripts/seedSuperAdmin.mjs",
+    "db:reset-super-admin-password": "node server/scripts/resetSuperAdminPassword.mjs"
   },
   "overrides": {
     "esbuild": "0.25.12",
