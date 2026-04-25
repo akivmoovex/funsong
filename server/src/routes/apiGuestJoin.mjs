@@ -45,11 +45,7 @@ export function createGuestJoinRouter(d) {
 
   r.post(
     '/:partyCode',
-    postJoin
-      ? (req, res, next) => {
-          postJoin(req, res, next)
-        }
-      : (req, res, next) => next(),
+    postJoin || ((req, res, next) => next()),
     async (req, res, next) => {
       try {
         const code = String(req.params.partyCode || '')
@@ -221,7 +217,7 @@ export function createPartyGuestRouter(d) {
     }
   })
 
-  r.post('/:partyCode/request-control', async (req, res, next) => {
+  r.post('/:partyCode/request-control', withRate, async (req, res, next) => {
     try {
       const code = String(req.params.partyCode || '')
       if (!PC.test(code)) {
@@ -335,7 +331,7 @@ export function createPartyGuestRouter(d) {
     }
   })
 
-  r.post('/:partyCode/request-song', async (req, res, next) => {
+  r.post('/:partyCode/request-song', withRate, async (req, res, next) => {
     try {
       const code = String(req.params.partyCode || '')
       if (!PC.test(code)) {

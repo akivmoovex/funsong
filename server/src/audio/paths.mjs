@@ -8,14 +8,34 @@ const repoRoot = path.join(__dirname, '../../..')
 const defDir = path.join(repoRoot, 'data', 'audio')
 
 /**
- * @returns {string} Absolute base directory; never from client input
+ * @param {string} candidatePath absolute or normalized
+ * @param {string} rootDir absolute base directory; files must be strictly under this tree
+ * @returns {boolean}
+ */
+export function isPathUnderStorageRoot(candidatePath, rootDir) {
+  const f = path.resolve(candidatePath)
+  const r = path.resolve(rootDir)
+  const rel = path.relative(r, f)
+  if (rel === '') {
+    return false
+  }
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return false
+  }
+  return true
+}
+
+/**
+ * @returns {string} Absolute base directory; never from client request bodies.
+ * Production requires `AUDIO_STORAGE_DIR` to be set (see assertProductionEnv).
  */
 export function getAudioStorageRoot() {
-  const d = (process.env.AUDIO_STORAGE_DIR || defDir).trim()
+  const raw = process.env.AUDIO_STORAGE_DIR
+  const d = (raw == null || String(raw).trim() === '' ? defDir : String(raw).trim())
   if (!d) {
-    return defDir
+    return path.resolve(defDir)
   }
-  return path.isAbsolute(d) ? path.normalize(d) : path.join(repoRoot, d)
+  return path.isAbsolute(d) ? path.resolve(d) : path.resolve(repoRoot, d)
 }
 
 /** Opaque key allowed in DB, e.g. `songs/{uuid}/abc.mp3` */
@@ -30,7 +50,13 @@ export function absolutePathForStorageKey(storageKey) {
     throw new Error('invalid_storage_key')
   }
   const base = getAudioStorageRoot()
-  return path.join(base, storageKey)
+  const abs = path.resolve(base, ...storageKey.split('/').filter((s) => s.length > 0))
+  if (!isPathUnderStorageRoot(abs, base)) {
+    const e = new Error('invalid_storage_key')
+    e.code = 'STORAGE'
+    throw e
+  }
+  return abs
 }
 
 /**
@@ -45,8 +71,11 @@ export async function pathsForNewUpload(songId) {
   const r = crypto.randomBytes(16).toString('hex')
   const storageKey = `songs/${songId.toLowerCase()}/${r}.mp3`
   const base = getAudioStorageRoot()
-  const dir = path.join(base, 'songs', songId.toLowerCase())
-  const absPath = path.join(base, storageKey)
+  const dir = path.resolve(base, 'songs', songId.toLowerCase())
+  const absPath = path.resolve(base, ...storageKey.split('/').filter((s) => s.length > 0))
+  if (!isPathUnderStorageRoot(absPath, base)) {
+    throw new Error('invalid_song_id')
+  }
   return { storageKey, dir, absPath }
 }
 

@@ -7,6 +7,39 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - Node **18.18+** (use **20+** on production hosts such as Hostinger if available)
 - **npm** (or compatible; scripts assume npm at the repo root)
 
+## Environment Variables
+
+- **Local development** — create `.env` or `.env.local` in the **repo root** (same directory as `package.json`). `dotenv` loads them when you run the server or scripts. `npm start` for a production-style run still uses `NODE_ENV=production` from the `start` script. Do **not** commit real values.
+- **Hostinger production** — set variables in **hPanel → your site → Node.js** (or **Advanced → Environment Variables**), not only in a file on disk, unless your workflow syncs a private `.env` on the server. The running process must see `DATABASE_URL`, `SESSION_SECRET`, and `AUDIO_STORAGE_DIR` (see [Hostinger (Node) — production deployment](#hostinger-node--production-deployment)).
+- **Never commit** a real `DATABASE_URL`, `SESSION_SECRET`, or `SUPER_ADMIN_PASSWORD` to GitHub. The repository only ships [`.env.example`](.env.example) with placeholders.
+- **Supabase** — use a PostgreSQL URI and include **`sslmode=require`** in the query string for typical cloud connections. Get the value from the Supabase dashboard (see [Supabase connection string](#supabase-connection-string) below).
+- **`SESSION_SECRET`** — long, random, and **unique per environment** (generate with a password manager or `openssl rand -base64 48`). Rotating it invalidates existing sessions.
+- **After changing** Hostinger environment variables, **rebuild / redeploy** the Node app in hPanel (or restart the process) so the new values are picked up, then run migrations and smoke checks as needed.
+
+### Hostinger `DATABASE_URL` setup
+
+1. Open **Hostinger hPanel**.
+2. Open the website’s **Node.js** app (or **Websites → Manage → Node.js**).
+3. Open **Environment variables** (or **Settings & Redeploy** / **Edit** where env vars are defined).
+4. Add **`DATABASE_URL`** with your **Supabase PostgreSQL** connection string (see below). Do not paste it into public tickets or commit it to the repo.
+5. Add **`SESSION_SECRET`** (long random string).
+6. Add **`NODE_ENV`** = `production` (or rely on the host + `npm start`, which already sets it).
+7. Add **`APP_BASE_URL`** = your public site origin, e.g. `https://funsong.org` (no trailing slash; used for your own runbooks and any future app features that need the canonical URL).
+8. Add **`AUDIO_STORAGE_DIR`** = an **absolute** path on the server **outside** `public_html` (see [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md)).
+9. **Save** and **redeploy** / **restart** the application.
+10. On the server (SSH or hPanel terminal): `npm run db:migrate` with the same `DATABASE_URL` in the environment.
+11. If needed: `npm run db:seed` for the super admin (one-time; see `.env.example`).
+12. Verify **`GET /health`** and **`GET /health/db`** on your public origin.
+
+### Supabase connection string
+
+- In the Supabase project: **Project Settings → Database → Connection string** (URI). Prefer the **connection pooling** (pooler) URL when the docs recommend it for your runtime.
+- The string must be valid for **PostgreSQL** (`postgresql://` or `postgres://`). For managed hosting, add **`?sslmode=require`** if it is not already in the URL.
+
+**Shape only (placeholders; not a real password, project ref, host, or secret):**
+
+`DATABASE_URL=postgresql://postgres.PROJECT_REF:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
+
 ## Local setup
 
 1. **Clone and install**
@@ -23,8 +56,9 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
    ```
 
    - `PORT` (default `3000`) is used by the API server. Vite runs on `5173` in dev and proxies `GET /health` to the API.
-   - A production-style run (`npm start`) **requires** non-empty `DATABASE_URL` and `SESSION_SECRET` — the server exits on startup with a `FATAL` line if they are missing (see **Hostinger** section).
+   - A production-style run (`npm start`) **requires** non-empty `DATABASE_URL`, `SESSION_SECRET`, and an **absolute** `AUDIO_STORAGE_DIR` — the server exits on startup with a `FATAL` line if any are missing (see **Hostinger** and [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md)).
    - For a production `npm start` build, `NODE_ENV=production` is set by the `start` script; Hostinger or your process manager can still set `PORT`.
+   - **Rate limits** (see below): defaults apply without configuration; use `TRUST_PROXY=1` on production hosts behind a reverse proxy so per-IP limits use the real client.
 
 3. **Run in development**
 
@@ -57,6 +91,8 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - `server/` — Express; `server/src/index.mjs` is the process entry, `server/src/app.mjs` exports `createApp()`.
 - `client/` — Vite + React + Tailwind; build output in `client/dist/`.
 - `client/public/` — static assets and PWA-related files included in the Vite public dir.
+- [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md) — on-disk MP3 path, permissions, backup, and what not to commit.
+- [docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md](docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md) — clone/build/migrate/seed/start, env checklist, health checks, first admin/host/guest smokes, rollback, common issues.
 
 ## PWA (Progressive Web App)
 
@@ -79,7 +115,9 @@ After `npm run build`, open `client/dist/`, or run `npm start` and use DevTools 
 
 ## Hostinger (Node) — production deployment
 
-Use this order on the server (or in CI) after cloning the repo. **In production, `DATABASE_URL` and `SESSION_SECRET` are required** — the process **exits immediately** with a clear `FATAL` message if either is missing when `NODE_ENV=production` (as set by `npm start`).
+**Step-by-step and smoke test checklist:** [docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md](docs/HOSTINGER_DEPLOYMENT_CHECKLIST.md) (env checklist, `GET /health` / `GET /health/db`, first admin, host, guest+QR, rollback, troubleshooting).
+
+Use this order on the server (or in CI) after cloning the repo. **In production, `DATABASE_URL`, `SESSION_SECRET`, and `AUDIO_STORAGE_DIR` (absolute) are required** — the process **exits immediately** with a clear `FATAL` message if any is missing or invalid when `NODE_ENV=production` (as set by `npm start`). Details: [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md).
 
 1. **Install dependencies** (from the repo root, including devDependencies — they are required for the Vite build):
    ```bash
@@ -112,17 +150,24 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
 | `SESSION_SECRET` | Yes | Long random string for `express-session` |
 | `PORT` | No | Default `3000` |
 | `TRUST_PROXY` | Often `1` behind a reverse proxy | So secure cookies and client IP are correct |
-| `AUDIO_STORAGE_DIR` | No | See **MP3 / audio storage** below; default `<repo>/data/audio` |
+| `AUDIO_STORAGE_DIR` | Yes (production) | **Absolute** path, outside the public site root. Optional in local dev; defaults to `<repo>/data/audio` when unset. **Required** for `npm start` — see [docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md) |
 | `MAX_AUDIO_UPLOAD_MB` | No | Default `15` |
 | `SUPER_ADMIN_*` | Only for `db:seed` | Not read by the API at runtime for normal operation |
+| `RATE_LIMIT_LOGIN_WINDOW_MINUTES`, `RATE_LIMIT_LOGIN_MAX` | No | Default **15** min window, **20** max POSTs to `/api/auth/login` and `/login` (stricter) |
+| `RATE_LIMIT_JOIN_WINDOW_MINUTES`, `RATE_LIMIT_JOIN_MAX` | No | Default **1** min, **60** max for `POST /api/join/:partyCode`, `POST /api/party/.../request-control`, and `.../request-song` (moderate; shared counter name per IP for join and guest actions) |
+| `RATE_LIMIT_*_WINDOW_MS` | No | If set, overrides the minute window for the matching bucket (e.g. tests) |
+| `RATE_LIMIT_BYPASS` | No | `1` disables limits; `0` forces limits even when test tooling sets `VITEST` (used by dedicated limit tests) |
 
+- **Rate limit response:** `429` with `{"error":"rate_limited","message":"Too many attempts. Please try again shortly."}` and a `Retry-After` header (seconds). The server does not log request bodies (passwords stay out of logs).
 - Ensure `client/dist` exists before running `npm start` in production (step 3). If the directory is missing, the SPA and static assets will 404 in production.
 - The server **does not** log `DATABASE_URL`, `SESSION_SECRET`, or `SUPER_ADMIN_PASSWORD`.
 
 ### MP3 / audio storage (production)
 
-- **Upload API:** `POST /api/admin/songs/:songId/audio` (multipart field `file`), **super admin** session only. The SPA route is under `/admin/songs/:id/edit`; the JSON API is always under `/api/…`.
+Full operations guide: **[docs/AUDIO_STORAGE_RUNBOOK.md](docs/AUDIO_STORAGE_RUNBOOK.md)** (path, permissions, disk quota, backup, manual delete/restore, what not to commit).
+
+- **Upload API:** `POST /api/admin/songs/:songId/audio` (multipart field `file`), **super admin** session only. The SPA route is under `/admin/songs/:id/edit`; the JSON API is always under `/api/…`. Only **`.mp3`**, **MPEG/MP3** MIME, random filenames on disk, buffer sniff for likely MP3.
 - **Stream API:** `GET /api/songs/:songId/audio` — same-origin, **session cookie** required. **Super admins** can preview any song that has a file. **Hosts** can stream only songs that are **published** and **not** `blocked` (same rule as the party song list). The response is `Content-Disposition: inline` (in-browser playback, not a forced file download in Express).
-- **On disk:** files live under a single controlled directory, default **`<repo>/data/audio`**, in subfolders `songs/<lowercase-uuid>/…mp3`. The database stores an **opaque storage key** (e.g. `songs/…/….mp3`), not a host path. The client only ever sees a **path-style URL** like `/api/songs/{id}/audio` — never a filesystem path.
+- **On disk:** files live under a single controlled directory (local dev default **`<repo>/data/audio`**; production: **set `AUDIO_STORAGE_DIR`** to an absolute path), in subfolders `songs/<lowercase-uuid>/…mp3`. The database stores an **opaque storage key**; **it is not returned in song JSON** (`mapSongRow`). The client only ever sees a **path-style URL** like `/api/songs/{id}/audio` — never a raw server filesystem path.
 - **Set `AUDIO_STORAGE_DIR` on Hostinger** to an **absolute, writable** directory **outside** the public document root (e.g. a folder under the hosting account’s home, not `public_html`). The Node process user must be able to create directories and read/write there. `MAX_AUDIO_UPLOAD_MB` caps upload size (default 15; see `.env.example`). Run **`npm run db:migrate`** after deploy so the `005_song_audio_storage` columns exist.
 - **Back up** `AUDIO_STORAGE_DIR` with the database; a restore without the files will leave songs pointing at missing objects.
