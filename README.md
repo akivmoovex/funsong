@@ -13,6 +13,7 @@ Private Hindi karaoke party PWA. This repo is a **Node (Express) + Vite (React) 
 - **Hostinger production** — set variables in **hPanel → your site → Node.js** (or **Advanced → Environment Variables**), not only in a file on disk, unless your workflow syncs a private `.env` on the server. The running process must see `DATABASE_URL`, `SESSION_SECRET`, and `AUDIO_STORAGE_DIR` (see [Hostinger (Node) — production deployment](#hostinger-node--production-deployment)).
 - **Never commit** a real `DATABASE_URL`, `SESSION_SECRET`, or `SUPER_ADMIN_PASSWORD` to GitHub. The repository only ships [`.env.example`](.env.example) with placeholders.
 - **Supabase** — use a PostgreSQL URI and include **`sslmode=require`** in the query string for typical cloud connections. Get the value from the Supabase dashboard (see [Supabase connection string](#supabase-connection-string) below).
+- **Optional SSL override for Hostinger + Supabase pooler edge cases** — if logs show `self-signed certificate in certificate chain`, set `PGSSL_REJECT_UNAUTHORIZED=false` in host env vars. Use this only for that certificate-chain incompatibility; do not remove `sslmode=require`.
 - **`SESSION_SECRET`** — long, random, and **unique per environment** (generate with a password manager or `openssl rand -base64 48`). Rotating it invalidates existing sessions.
 - **After changing** Hostinger environment variables, **rebuild / redeploy** the Node app in hPanel (or restart the process) so the new values are picked up, then run migrations and smoke checks as needed.
 
@@ -183,6 +184,8 @@ Use this order on the server (or in CI) after cloning the repo. **In production,
 | Variable | Required in production | Notes |
 |----------|------------------------|--------|
 | `DATABASE_URL` | Yes | PostgreSQL URI; `getPool()` returns `null` without it (dev can skip; prod startup fails) |
+| `PGSSL_REJECT_UNAUTHORIZED` | No | Optional SSL troubleshooting switch. Set to `false` only if Supabase/Hostinger shows `self-signed certificate in certificate chain`; keeps `DATABASE_URL` unchanged. |
+| `PGSSL_MODE` | No | Optional value `supabase` to force explicit TLS settings while keeping certificate verification enabled by default. |
 | `SESSION_SECRET` | Yes | Long random string for `express-session` |
 | `PORT` | No | Default `3000` |
 | `TRUST_PROXY` | Often `1` behind a reverse proxy | So secure cookies and client IP are correct |

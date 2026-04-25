@@ -1,15 +1,12 @@
 import { Pool } from 'pg'
+import { buildPoolConfigFromEnv } from './connectionConfig.mjs'
 
 let _pool = null
 
 export function getPool() {
-  if (!process.env.DATABASE_URL) return null
+  if (!String(process.env.DATABASE_URL || '').trim()) return null
   if (_pool) return _pool
-  _pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 10,
-    connectionTimeoutMillis: 10_000
-  })
+  _pool = new Pool(buildPoolConfigFromEnv(process.env))
   return _pool
 }
 

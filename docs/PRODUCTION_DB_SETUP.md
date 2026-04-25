@@ -30,6 +30,24 @@ If `/health/db` is not OK, fix the connection string, SSL, or firewall before ru
 
 ---
 
+## Troubleshooting: `self-signed certificate in certificate chain`
+
+In some managed-host + pooled Postgres combinations (including some Hostinger + Supabase pooler setups), Node/pg may fail with:
+
+`Error: self-signed certificate in certificate chain`
+
+If that happens:
+
+1. Keep `DATABASE_URL` as the Supabase URI and keep `sslmode=require` in it.
+2. In **Hostinger → Node.js → Environment variables**, set:
+   - `PGSSL_REJECT_UNAUTHORIZED=false`
+3. Redeploy or restart the Node app so the environment change is applied.
+4. Recheck `GET /health/db`, then rerun `npm run db:migrate` / `npm run db:seed` as needed.
+
+Use this override only when you hit the certificate-chain error; default behavior keeps certificate verification on.
+
+---
+
 ## 3. Run migrations
 
 On the **server** (SSH, hPanel **terminal**, or a one-off deploy job), from the app directory with the same `DATABASE_URL` in the environment:
